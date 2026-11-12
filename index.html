@@ -68,6 +68,7 @@ body{background:var(--void);color:var(--ink);font-family:var(--body)}
 .card h2{font-family:var(--display);font-weight:800;font-size:22px;margin:0}
 .card h3{font-family:var(--display);font-weight:500;font-size:14px;margin:4px 0 0;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 .card p{margin:0;color:var(--muted);font-size:14px;line-height:1.5}
+#ovText{white-space:pre-line}
 .legend{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;font-size:12.5px;text-align:left;color:var(--ink)}
 .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:-1px}
 .menu{display:flex;flex-direction:column;gap:10px;width:100%}
@@ -1391,7 +1392,9 @@ addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;i
 addEventListener('appinstalled',()=>{installed=true;deferredPrompt=null;lsSet('orbita-installed','1');if(!$('scrInstall').hidden)goHome();refreshInstallLink()});
 try{matchMedia('(display-mode: standalone)').addEventListener('change',()=>{installed=isStandalone()||installed;refreshInstallLink()})}catch(e){}
 if(navigator.getInstalledRelatedApps)navigator.getInstalledRelatedApps().then(a=>{if(a&&a.length){installed=true;lsSet('orbita-installed','1');if(!$('scrInstall').hidden)goHome()}}).catch(()=>{}).finally(()=>{instChecked=true;refreshInstallLink()});
-function refreshInstallLink(){$('goInstall').hidden=installed;$('goRemind').hidden=!(HOSTED&&installed&&!IS_IOS&&'Notification' in window&&'serviceWorker' in navigator)||save.remind===true&&Notification.permission==='granted'}
+const CAN_NOTIFY=HOSTED&&'Notification' in window&&'serviceWorker' in navigator;
+const notifPerm=()=>{try{return Notification.permission}catch(e){return'denied'}};
+function refreshInstallLink(){$('goInstall').hidden=installed;const show=CAN_NOTIFY&&installed;$('goRemind').hidden=!show;if(show)$('goRemind').textContent=notifPerm()==='granted'?'Прислать тестовое уведомление':'Включить уведомления'}
 
 const ICON_MINI=(x,y,s)=>`<g transform="translate(${x},${y}) scale(${s/60})"><rect width="60" height="60" rx="13" fill="url(#ig)"/><g fill="none" stroke="#b07cff" stroke-opacity=".8"><ellipse cx="30" cy="27" rx="24" ry="24"/><ellipse cx="30" cy="26" rx="15" ry="15"/><ellipse cx="30" cy="25" rx="8" ry="8"/></g><circle cx="30" cy="25" r="4" fill="#3ee6ff"/><path d="M30 38 L42 49 L33 47 L30 50 L27 47 L18 49Z" fill="#f1eeff"/></g>`;
 const DEFS=`<defs><radialGradient id="ig" cx=".5" cy=".42" r=".7"><stop offset="0" stop-color="#3b2a8f"/><stop offset="1" stop-color="#07061a"/></radialGradient>
@@ -1454,17 +1457,38 @@ $('goInstall').onclick=showInstall;
 /* ---------------- REMINDERS (only in the installed app on your own site) ---------------- */
 if(HOSTED&&'serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 function notePlayed(){if(!HOSTED||!('caches' in window))return;caches.open('orbita-state').then(c=>c.put(new URL('__last-play',location.href).href,new Response(String(Date.now())))).catch(()=>{})}
-$('goRemind').onclick=async()=>{
-  let perm='denied';try{perm=await Notification.requestPermission()}catch(e){}
-  if(perm!=='granted'){showMenu('Напоминания выключены','Разреши уведомления для «Орбиты» в настройках телефона, и кнопка заработает.',[['Главная',goHome]]);return}
-  const reg=await navigator.serviceWorker.ready;let periodic=false;
-  try{if('periodicSync' in reg){await reg.periodicSync.register('orbita-remind',{minInterval:12*3600*1000});periodic=true}}catch(e){}
-  try{reg.showNotification('Напоминания включены',{body:'Корабль будет звать тебя в полёт, если долго не заходишь 🚀',icon:'icon-192.png',badge:'badge-96.png',tag:'orbita-hello'})}catch(e){}
-  save.remind=true;persist();refreshInstallLink();
-  showMenu('Напоминания включены',periodic?'Если ты долго не заходишь, корабль напомнит о себе. Как часто проверять, решает сам телефон, обычно раз в день.':'Телефон не поддерживает фоновые напоминания для веб-приложений, поэтому уведомления могут не приходить.',[['Главная',goHome]]);
-};
+/* Notifications. iPhone lists a web app in Settings → Notifications only after the app asks once,
+   and asking has to come from a tap, so the app shows its own card with a button that opens the system prompt. */
+const swReady=()=>Promise.race([navigator.serviceWorker.ready,new Promise((_,rej)=>setTimeout(()=>rej(new Error('sw')),6000))]);
+async function sendTest(){
+  const reg=await swReady();const tag='orbita-test-'+Date.now();
+  await reg.showNotification('Уведомления работают! 🚀',{body:'Так «Орбита» будет звать тебя в полёт.',icon:'icon-192.png',badge:'badge-96.png',tag});
+  // the system confirms the notification was shown if it is listed among the app's notifications
+  await new Promise(r=>setTimeout(r,700));let listed=null;try{const list=await reg.getNotifications({tag});listed=list.length>0}catch(e){}
+  return listed;
+}
+async function askNotifications(){
+  let perm=notifPerm();
+  if(perm==='default'){try{perm=await Notification.requestPermission()}catch(e){perm='denied'}} // opens the iPhone/Android "Allow notifications?" prompt
+  save.notifAsked=true;persist();refreshInstallLink();
+  if(perm!=='granted')return showMenu('Уведомления выключены',IS_IOS?'Включить их можно в «Настройки» → «Уведомления» → «Орбита» → «Допуск уведомлений».':'Включить их можно в настройках телефона: «Приложения» → «Орбита» → «Уведомления».',[['Главная',goHome]]);
+  showMenu('Отправляю тестовое уведомление…','Секунду.',[],{spin:true});
+  let listed;try{listed=await sendTest()}catch(e){return showMenu('Не получилось отправить','Телефон не дал игре показать уведомление. Закрой «Орбиту» полностью, открой её снова с иконки на главном экране и попробуй ещё раз.',[['Попробовать ещё раз',askNotifications],['Главная',goHome,true]])}
+  // Android: also ask the phone to wake the game about once a day for reminders
+  try{const reg=await swReady();if('periodicSync' in reg)await reg.periodicSync.register('orbita-remind',{minInterval:12*3600*1000})}catch(e){}
+  save.remind=true;persist();
+  showMenu('Пришло уведомление?',(listed===false?'Телефон не подтвердил показ уведомления. ':'Уведомление отправлено. ')+'Если баннер не появился сверху, смахни вниз от верхнего края экрана: оно будет в центре уведомлений.',
+    [['Да, пришло',()=>showMenu('Готово','Уведомления работают. Корабль будет звать тебя в полёт 🚀',[['Главная',goHome]])],
+     ['Нет',()=>showMenu('Что проверить',(IS_IOS?'1. «Настройки» → «Уведомления» → «Орбита»: включи «Допуск уведомлений» и «Баннеры».\n2. Выключи режим «Не беспокоить» или другой фокус.\n3. Игра должна быть открыта с иконки на главном экране, а не в Safari.':'1. Настройки телефона → «Приложения» → «Орбита» → «Уведомления»: включи их.\n2. Выключи режим «Не беспокоить».\n3. Игра должна быть открыта с иконки на главном экране.'),[['Прислать ещё раз',askNotifications],['Главная',goHome,true]]),true]]);
+}
+$('goRemind').onclick=askNotifications;
+// installed app, notifications never decided yet → offer them right away on launch
+function offerNotifications(){
+  if(!CAN_NOTIFY||!installed||notifPerm()!=='default'||state!=='menu'||$('scrMain').hidden)return;
+  showMenu('Включи уведомления 🔔','Корабль будет иногда звать тебя в полёт, а ещё так ты не пропустишь новое. Нажми кнопку, и телефон спросит разрешение.',[['Разрешить уведомления',askNotifications],['Позже',goHome,true]]);
+}
 
-screen('scrMain');refreshInstallLink();
+screen('scrMain');refreshInstallLink();setTimeout(offerNotifications,600);
 // on every launch in a phone browser, show the guide unless the app is installed (Android waits for the installed-apps check)
 if((IS_IOS||IS_ANDROID)&&!installed){const t0=Date.now(),go=()=>{if(installed)return;if(!instChecked&&Date.now()-t0<1500)return setTimeout(go,100);if(state==='menu'&&!$('scrMain').hidden)showInstall()};setTimeout(go,350)}
 let last=performance.now();
