@@ -1,0 +1,1477 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Орбита</title>
+<meta name="description" content="Полёт по космическому туннелю в ритме музыки: лови басы, уворачивайся от астероидов, прокачивай корабль.">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#07061a">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Орбита">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:dark}body{margin:0;font:14px/1.4 system-ui,-apple-system,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;800&family=Manrope:wght@400;600;700&display=swap">
+<style>
+/* Layout: full-screen canvas (space backdrop + glass tunnel); HUD pinned top; overlay screens: home · library · hangar · messages */
+:root{
+  --void:#07061a; --panel:rgba(9,8,30,.8); --line:#b07cff; --bass:#3ee6ff; --rock:#ff8a5c; --gold:#ffd166; --magnet:#ff5470; --shield:#8fb8ff;
+  --ink:#f1eeff; --muted:#9d97cc; --edge:rgba(176,124,255,.28);
+  --display:"Unbounded","Arial Black",system-ui,sans-serif;
+  --body:"Manrope",system-ui,-apple-system,sans-serif;
+  color-scheme:dark;
+}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none}
+body{background:var(--void);color:var(--ink);font-family:var(--body)}
+#game{position:fixed;inset:0;width:100%;height:100%;display:block}
+.hud{position:fixed;left:0;right:0;top:0;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;
+  padding-top:calc(14px + env(safe-area-inset-top,0px));
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));pointer-events:none}
+.hud[hidden]{display:none!important}
+.stat{display:flex;flex-direction:column;gap:3px}
+.label{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+.val{font-family:var(--display);font-weight:800;font-size:24px;font-variant-numeric:tabular-nums;line-height:1;color:var(--bass)}
+.mid{flex:1;min-width:0;max-width:200px;display:flex;flex-direction:column;gap:6px;padding-top:2px}
+.meter{width:100%;height:6px;border-radius:3px;background:rgba(176,124,255,.18);overflow:hidden}
+.meter i{display:block;height:100%;width:0;border-radius:3px;background:var(--gold)}
+.song{font-size:11px;color:var(--ink);opacity:.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{font:600 11px var(--body);padding:3px 8px;border-radius:999px;font-variant-numeric:tabular-nums}
+.chip.mag{background:rgba(255,84,112,.2);color:#ffb3c0;border:1px solid rgba(255,84,112,.5)}
+.chip.rkt{background:rgba(255,209,102,.2);color:var(--gold);border:1px solid rgba(255,209,102,.5)}
+.chip.shd{background:rgba(143,184,255,.2);color:#d3e2ff;border:1px solid rgba(143,184,255,.55)}
+.right{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+#lives{font-size:18px;letter-spacing:2px;color:var(--rock);line-height:1}
+.hbtns{display:flex;gap:6px}
+.hbtn{pointer-events:auto;font:600 12px var(--body);color:var(--ink);background:rgba(176,124,255,.16);border:1px solid rgba(176,124,255,.35);border-radius:999px;padding:6px 12px;cursor:pointer}
+.overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;overflow-y:auto;touch-action:pan-y;
+  padding-block:calc(16px + env(safe-area-inset-top,0px)) calc(16px + env(safe-area-inset-bottom,0px));
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.card{text-align:center;max-width:360px;width:100%;display:flex;flex-direction:column;gap:14px;align-items:center;margin:auto;
+  background:var(--panel);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);padding:22px 18px;border-radius:20px;border:1px solid var(--edge)}
+.card.wide{max-width:440px;align-items:stretch;text-align:left;max-height:calc(100% - 8px)}
+.card[hidden]{display:none!important}
+.card.wide>*{flex-shrink:0}
+#scrLib{height:calc(100% - 8px)}
+#scrLib .list{flex:1 1 0;flex-shrink:1}
+#scrShop{max-height:none}
+.card h1{font-family:var(--display);font-weight:800;font-size:32px;margin:0;text-wrap:balance}
+.card h1.logo{font-size:44px;letter-spacing:.02em;background:linear-gradient(100deg,var(--ink),var(--bass) 55%,var(--line));-webkit-background-clip:text;background-clip:text;color:transparent}
+.card h2{font-family:var(--display);font-weight:800;font-size:22px;margin:0}
+.card h3{font-family:var(--display);font-weight:500;font-size:14px;margin:4px 0 0;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.card p{margin:0;color:var(--muted);font-size:14px;line-height:1.5}
+.legend{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;font-size:12.5px;text-align:left;color:var(--ink)}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:-1px}
+.menu{display:flex;flex-direction:column;gap:10px;width:100%}
+.big{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;width:100%;padding:14px 16px;border-radius:14px;cursor:pointer;
+  font:800 16px var(--display);color:var(--ink);background:rgba(176,124,255,.12);border:1px solid var(--edge)}
+.big small{font:600 12px var(--body);color:var(--muted)}
+.big.primary{background:var(--bass);border-color:var(--bass);color:var(--void)}
+.big.primary small{color:rgba(7,6,26,.7)}
+.coins{display:inline-flex;align-items:center;gap:6px;font:800 16px var(--display);color:var(--gold);font-variant-numeric:tabular-nums}
+.coin{width:14px;height:14px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#fff4c2,var(--gold) 55%,#b8860b);box-shadow:0 0 8px rgba(255,209,102,.5);display:inline-block}
+.top{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.back{font:600 13px var(--body);color:var(--ink);background:transparent;border:1px solid var(--edge);border-radius:999px;padding:7px 12px;cursor:pointer}
+input[type=search],select{font:500 14px var(--body);color:var(--ink);background:rgba(255,255,255,.06);border:1px solid var(--edge);border-radius:12px;padding:10px 12px;width:100%;box-sizing:border-box;min-width:0}
+select option{background:#14122e}
+.chips-row{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none;touch-action:pan-x}
+.chips-row::-webkit-scrollbar{display:none}
+.fchip{flex:none;font:600 12px var(--body);padding:7px 12px;border-radius:999px;border:1px solid var(--edge);background:transparent;color:var(--ink);cursor:pointer}
+.fchip.on{background:var(--line);border-color:var(--line);color:var(--void)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--edge);border-radius:12px;overflow:hidden}
+.seg button{font:700 13px var(--body);padding:9px 4px;background:transparent;color:var(--ink);border:0;cursor:pointer}
+.seg button+button{border-left:1px solid var(--edge)}
+.seg button.on{background:var(--bass);color:var(--void)}
+.list{display:flex;flex-direction:column;gap:8px;overflow-y:auto;min-height:120px;touch-action:pan-y;margin-inline:-4px;padding-inline:4px}
+.row{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;background:rgba(255,255,255,.04);border:1px solid rgba(176,124,255,.14)}
+.row .info{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.row b{font-size:14.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .sub{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .tags{display:flex;gap:4px;flex-wrap:wrap}
+.tag{font-size:10.5px;padding:1px 7px;border-radius:999px;background:rgba(176,124,255,.16);color:#d8c8ff}
+.row .side{display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex:none}
+.stars{color:var(--gold);font-size:12px;letter-spacing:1px}
+.play,.buy{font:700 13px var(--body);padding:8px 14px;border-radius:999px;border:0;background:var(--bass);color:var(--void);cursor:pointer;white-space:nowrap}
+.buy{background:var(--gold)}
+.buy:disabled{opacity:.35;cursor:default}
+.pips{display:flex;gap:3px}
+.pips i{width:12px;height:5px;border-radius:2px;background:rgba(176,124,255,.25)}
+.pips i.on{background:var(--gold)}
+.skins{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.skin{display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 4px;border-radius:14px;border:1px solid var(--edge);background:rgba(255,255,255,.04);color:var(--ink);font:600 12px var(--body);cursor:pointer}
+.skin.on{border-color:var(--bass);box-shadow:0 0 0 1px var(--bass) inset}
+.skin canvas{width:48px;height:36px}
+.skin small{color:var(--gold);font-size:11px}
+.note{font-size:12px!important}
+.btn.small{padding:7px 12px;font-size:12.5px}
+.fld{display:flex;flex-direction:column;gap:6px;font:600 13px var(--body);color:var(--ink)}
+.fld input{font:500 15px var(--body);color:var(--ink);background:rgba(255,255,255,.06);border:1px solid var(--edge);border-radius:12px;padding:10px 12px;min-width:0}
+.chk{display:flex;gap:10px;align-items:flex-start;font-size:13px;color:var(--ink);line-height:1.4}
+.chk input{width:18px;height:18px;margin:1px 0 0;accent-color:var(--bass);flex:none}
+.err{color:#ffb3a0!important;font-size:13px!important}
+.del{font:600 12px var(--body);padding:5px 10px;border-radius:999px;border:1px solid rgba(255,138,92,.5);background:transparent;color:#ffb3a0;cursor:pointer}
+.tag.player{background:rgba(62,230,255,.16);color:#bff7ff}
+.empty{text-align:center;color:var(--muted);font-size:13px;padding:20px 0}
+.btns{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.btn{font:600 14px var(--body);padding:11px 20px;border-radius:999px;border:1px solid var(--bass);background:var(--bass);color:var(--void);cursor:pointer}
+.btn.ghost{background:transparent;color:var(--ink);border-color:rgba(176,124,255,.5)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+/* install guide: drawn phone screens with an animated tap */
+.seg.two{grid-template-columns:1fr 1fr}
+.steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:14px;counter-reset:st}
+.steps li{display:flex;flex-direction:column;gap:8px;counter-increment:st}
+.steps .cap{display:flex;gap:10px;align-items:flex-start;font-size:14px;line-height:1.45;color:var(--ink)}
+.steps .cap::before{content:counter(st);flex:none;width:24px;height:24px;border-radius:50%;background:var(--bass);color:var(--void);font:800 12px var(--display);display:grid;place-items:center;margin-top:-1px}
+.steps .cap small{display:block;color:var(--muted);font-size:12.5px;margin-top:2px}
+.shot{width:100%;height:auto;max-width:100%;border-radius:16px;border:1px solid var(--edge);background:#000;display:block}
+.shot .ripple{transform-box:fill-box;transform-origin:center;animation:ripple 1.6s ease-out infinite}
+.shot .finger{animation:press 1.6s ease-in-out infinite}
+@keyframes ripple{0%,30%{transform:scale(.2);opacity:0}38%{opacity:.9}100%{transform:scale(1.6);opacity:0}}
+@keyframes press{0%{transform:translate(18px,22px)}28%,40%{transform:translate(0,0)}34%{transform:translate(0,2px) scale(.96)}100%{transform:translate(18px,22px)}}
+.linkbtn{font:600 13px var(--body);color:var(--bass);background:none;border:0;padding:6px;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+@media (prefers-reduced-motion:reduce){.shot .ripple,.shot .finger{animation:none}}
+.spin{width:34px;height:34px;border-radius:50%;border:3px solid rgba(62,230,255,.2);border-top-color:var(--bass);animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(1turn)}}
+.card.win{border-color:rgba(255,209,102,.6);animation:pop .5s cubic-bezier(.2,1.6,.4,1)}
+.card.win h1{color:var(--gold)}
+.reward{display:flex;align-items:center;gap:8px;font:800 22px var(--display);color:var(--gold)}
+@keyframes pop{from{transform:scale(.6);opacity:0}}
+/* wallet + 3D coins */
+.wallet{position:fixed;z-index:30;top:calc(14px + env(safe-area-inset-top,0px));right:max(16px,env(safe-area-inset-right,0px));display:flex;align-items:center;gap:8px;
+  padding:6px 12px 6px 8px;border-radius:999px;background:rgba(9,8,30,.85);border:1px solid rgba(255,209,102,.45);font:800 16px var(--display);color:var(--gold);font-variant-numeric:tabular-nums;pointer-events:none}
+.wallet[hidden]{display:none!important}
+.coin.flat{width:20px;height:20px;position:relative;box-shadow:inset 0 0 0 2px #e0a526,0 0 6px rgba(255,209,102,.4)}
+.coin.flat::after{content:"★";position:absolute;inset:0;display:grid;place-items:center;font-size:11px;line-height:1;color:#b9800f}
+.wallet.bump{animation:bump .22s ease-out}
+@keyframes bump{40%{transform:scale(1.18)}}
+.c3d{--s:22px;width:var(--s);height:var(--s);perspective:200px;display:inline-block;flex:none}
+.c3d.lg{--s:34px}
+.c3d i{display:block;width:100%;height:100%;border-radius:50%;position:relative;transform-style:preserve-3d;animation:coinspin 1.6s linear infinite;
+  background:radial-gradient(circle at 35% 30%,#fff8d6 0 12%,#ffd166 35%,#e0a526 70%,#9c6b0e 100%);box-shadow:inset 0 0 0 calc(var(--s)*.09) #f2b632,inset 0 0 0 calc(var(--s)*.14) #b9800f}
+.c3d i::before{content:"";position:absolute;inset:0;border-radius:50%;background:#a87410;transform:translateZ(calc(var(--s)*-.08))}
+.c3d i::after{content:"★";position:absolute;inset:0;display:grid;place-items:center;font-size:calc(var(--s)*.5);color:#b9800f;transform:translateZ(1px);text-shadow:0 1px 0 #fff3c4}
+@keyframes coinspin{to{transform:rotateY(360deg)}}
+#flyLayer{position:fixed;inset:0;pointer-events:none;z-index:40}
+.fly{position:absolute;left:0;top:0;--s:28px;margin:-14px 0 0 -14px;filter:drop-shadow(0 0 8px rgba(255,209,102,.7))}
+.fly i{animation-duration:.45s}
+@media (prefers-reduced-motion:reduce){.c3d i{animation:none}}
+@media (prefers-reduced-motion:reduce){.card.win,.spin{animation:none}}
+</style>
+
+<canvas id="game" aria-label="Туннель"></canvas>
+<div class="hud" id="hud" hidden>
+  <div class="stat"><span class="label">Басы</span><span class="val" id="bass">0</span></div>
+  <div class="mid">
+    <span class="label" id="lvLabel">Уровень</span><div class="meter"><i id="prog"></i></div>
+    <span class="song" id="song"></span>
+    <div class="chips" id="chips"></div>
+  </div>
+  <div class="right"><span id="lives" aria-label="Жизни">♥♥♥</span>
+    <div class="hbtns"><button class="hbtn" id="mute" type="button">Звук</button><button class="hbtn" id="pauseBtn" type="button" aria-label="Пауза">❚❚</button></div></div>
+</div>
+<div class="overlay" id="overlay">
+  <div class="card" id="scrMain">
+    <h1 class="logo">Орбита</h1>
+    <p>Лети по туннелю, лови басы в такт музыке, собирай монеты и прокачивай корабль.</p>
+    <div class="menu">
+      <button class="big primary" id="goLib" type="button">Медиатека<small id="libCount">мелодии и 3 сложности</small></button>
+      <button class="big" id="goOwn" type="button">Своя музыка<small>Песня или видео с телефона</small></button>
+      <button class="big" id="goShop" type="button">Ангар<small>Улучшения и окраска корабля</small></button>
+    </div>
+    <div class="btns"><button class="linkbtn" type="button" id="goInstall" hidden>Как установить на телефон</button><button class="linkbtn" type="button" id="goRemind" hidden>Включить напоминания</button></div>
+    <div class="legend">
+      <span><span class="dot" style="background:var(--bass)"></span>бас +1 монета</span>
+      <span><span class="dot" style="background:var(--rock)"></span>астероид</span>
+      <span><span class="dot" style="background:var(--magnet)"></span>магнит</span>
+      <span><span class="dot" style="background:var(--gold)"></span>ракета ×1.5</span>
+      <span><span class="dot" style="background:var(--shield)"></span>щит</span>
+    </div>
+  </div>
+  <div class="card wide" id="scrLib" hidden>
+    <div class="top"><button class="back" type="button" data-home>← Главная</button></div>
+    <div class="top"><h2>Медиатека</h2><button type="button" class="btn ghost small" id="addOpen" hidden>+ Добавить трек</button></div>
+    <input id="libSearch" type="search" placeholder="Поиск: название, автор, инструмент" autocomplete="off">
+    <div class="chips-row" id="libCats"></div>
+    <div class="row2"><select id="libInst" aria-label="Инструмент"></select><select id="libAuthor" aria-label="Автор"></select></div>
+    <div class="seg" id="libDiff"></div>
+    <div class="list" id="libList"></div>
+    <p class="note">Здесь мелодии, которые давно стали общественным достоянием, в новых аранжировках. Песни современных исполнителей можно добавить через «Свою музыку» на главной.</p>
+  </div>
+  <div class="card wide" id="scrShop" hidden>
+    <div class="top"><button class="back" type="button" data-home>← Главная</button></div>
+    <h2>Ангар</h2>
+    <div class="list" id="shopList" style="overflow:visible"></div>
+    <h3>Окраска</h3>
+    <div class="skins" id="skinList"></div>
+  </div>
+  <div class="card wide" id="scrInstall" hidden>
+    <div class="top"><h2>Установи «Орбиту»</h2><button class="back" type="button" id="instClose">Позже</button></div>
+    <p>Игра будет открываться с иконки на главном экране, на весь экран, как обычное приложение.</p>
+    <div class="seg two" id="instTabs"><button type="button" data-os="ios">iPhone</button><button type="button" data-os="android">Android</button></div>
+    <ol class="steps" id="instSteps"></ol>
+    <div class="btns"><button class="btn" type="button" id="instNow" hidden>Установить сейчас</button><button class="btn ghost" type="button" id="instOk">Понятно</button></div>
+  </div>
+  <div class="card wide" id="scrAdd" hidden>
+    <div class="top"><button class="back" type="button" id="addBack">← Медиатека</button></div>
+    <h2>Добавить трек</h2>
+    <p>Трек появится в медиатеке в разделе «От игроков», и его сможет запустить любой, у кого есть доступ к этой игре.</p>
+    <div class="row2"><button type="button" class="btn ghost" id="addPickA">Песня из файлов</button><button type="button" class="btn ghost" id="addPickV">Видео из галереи</button></div>
+    <p class="note" id="addFile">Файл не выбран</p>
+    <label class="fld" for="addTitle">Название<input id="addTitle" type="text" maxlength="80" placeholder="Например, Летний вечер" autocomplete="off"></label>
+    <label class="fld" for="addAuthor">Исполнитель или автор<input id="addAuthor" type="text" maxlength="60" placeholder="Необязательно" autocomplete="off"></label>
+    <label class="fld" for="addCat">Категория<input id="addCat" type="text" list="catList" maxlength="40" placeholder="Например, Рок, Поп, Электроника" autocomplete="off"></label>
+    <datalist id="catList"></datalist>
+    <label class="chk" for="addRights"><input type="checkbox" id="addRights"> Я автор этого трека или у меня есть право им делиться</label>
+    <p class="err" id="addErr" hidden></p>
+    <button class="btn" id="addSubmit" type="button">Добавить в медиатеку</button>
+  </div>
+  <div class="card" id="card" hidden>
+    <h1 id="ovTitle"></h1>
+    <p id="ovText"></p>
+    <div class="reward" id="reward" hidden><span class="c3d lg" id="rewardCoin"><i></i></span><span id="rewardVal"></span></div>
+    <div class="spin" id="spin" hidden></div>
+    <div class="btns" id="btns"></div>
+  </div>
+</div>
+<div class="wallet" id="wallet" aria-label="Баланс монет"><span class="coin flat" id="walletCoin"></span><b id="walletVal">0</b></div>
+<div id="flyLayer" aria-hidden="true"></div>
+<input type="file" id="fileAudio" accept=".mp3,.m4a,.aac,.wav,.ogg,.oga,.opus,.flac,.weba,.mp4,audio/mpeg,audio/mp4,audio/wav,audio/ogg,audio/flac,audio/aac" hidden>
+<input type="file" id="fileVideo" accept="video/*" hidden>
+
+<script>
+(()=>{
+const cv=document.getElementById('game'),g=cv.getContext('2d');
+const $=id=>document.getElementById(id);
+const TAU=Math.PI*2;
+function mulberry(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+let W,H,cx,cy,F,dpr,bg,BGS;
+function resize(){dpr=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;cv.width=W*dpr;cv.height=H*dpr;cx=W/2;cy=H*.44;F=Math.min(W,H)*.62;buildBg()}
+
+/* ---------- space backdrop (pre-rendered once per size, rotates with the camera) ----------
+   Realism comes from noise: value-noise fBm drives nebula clouds, dust lanes and planet surfaces;
+   planets are lit per pixel from one distant sun (upper left) with limb darkening and an atmosphere rim. */
+function hash3(x,y,z){let h=Math.imul(x|0,374761393)+Math.imul(y|0,668265263)+Math.imul(z|0,1274126177)|0;h=Math.imul(h^(h>>>13),1274126177);h^=h>>>16;return(h>>>0)/4294967296}
+function vnoise3(x,y,z){const xi=Math.floor(x),yi=Math.floor(y),zi=Math.floor(z),xf=x-xi,yf=y-yi,zf=z-zi,u=xf*xf*(3-2*xf),v=yf*yf*(3-2*yf),w=zf*zf*(3-2*zf);
+  const c=(i,j,k)=>hash3(xi+i,yi+j,zi+k),L=(a,b,t)=>a+(b-a)*t;
+  return L(L(L(c(0,0,0),c(1,0,0),u),L(c(0,1,0),c(1,1,0),u),v),L(L(c(0,0,1),c(1,0,1),u),L(c(0,1,1),c(1,1,1),u),v),w)}
+function fbm3(x,y,z,o){let s=0,a=.5,f=1,n=0;for(let i=0;i<o;i++){s+=a*vnoise3(x*f,y*f,z*f);n+=a;a*=.5;f*=2.03}return s/n}
+const sstep=(a,b,x)=>{const t=Math.max(0,Math.min(1,(x-a)/(b-a)));return t*t*(3-2*t)};
+const SUN=(()=>{const v=[-.62,-.48,.62],l=Math.hypot(...v);return v.map(c=>c/l)})();
+// sphere renderer: tex(nx,ny,nz) → [r,g,b] in 0..255; returns a canvas 2*(r+pad)
+function renderPlanet(R,tex,o={}){
+  const pad=Math.ceil(R*(o.atm?.18:.02)),S=2*(R+pad),c=document.createElement('canvas');c.width=c.height=S;const x=c.getContext('2d'),img=x.createImageData(S,S),d=img.data;
+  const tilt=o.tilt||0,ct=Math.cos(tilt),st=Math.sin(tilt);
+  for(let j=0;j<S;j++)for(let i=0;i<S;i++){
+    const px=(i+.5-S/2)/R,py=(j+.5-S/2)/R,r2=px*px+py*py;if(r2>1)continue;
+    const pz=Math.sqrt(1-r2),edgeA=Math.min(1,(1-Math.sqrt(r2))*R*1.2);
+    // texture coords in the planet's own (tilted) frame
+    const tx=px*ct-py*st,ty=px*st+py*ct;
+    const[cr,cg,cb]=tex(tx,ty,pz);
+    const lam=px*SUN[0]+py*SUN[1]+pz*SUN[2],day=sstep(-.12,.35,lam),lit=(o.amb||.025)+(1-(o.amb||.025))*day*Math.pow(Math.max(0,lam*.6+.4),.8),limb=.72+.28*pz;
+    let r=cr*lit*limb,gg=cg*lit*limb,bb=cb*lit*limb;
+    if(o.night&&day<.5){const nl=o.night(tx,ty,pz)*(1-day*2);r+=255*nl;gg+=190*nl;bb+=110*nl}
+    if(o.spec){const hx=SUN[0],hy=SUN[1],hz=SUN[2]+1,hl=Math.hypot(hx,hy,hz),sp=Math.pow(Math.max(0,(px*hx+py*hy+pz*hz)/hl),60)*o.spec(tx,ty,pz);r+=200*sp;gg+=210*sp;bb+=230*sp}
+    const k=(j*S+i)*4;d[k]=Math.min(255,r);d[k+1]=Math.min(255,gg);d[k+2]=Math.min(255,bb);d[k+3]=255*edgeA;
+  }
+  x.putImageData(img,0,0);
+  if(o.atm){ // atmosphere: thin glowing rim on its own layer, brightest toward the sun, added on top of the disc
+    const[ar,ag,ab]=o.atm,rc=document.createElement('canvas');rc.width=rc.height=S;const rx=rc.getContext('2d');
+    const gr=rx.createRadialGradient(S/2,S/2,R*.9,S/2,S/2,R+pad);gr.addColorStop(0,`rgba(${ar},${ag},${ab},0)`);gr.addColorStop(.45,`rgba(${ar},${ag},${ab},.6)`);gr.addColorStop(1,`rgba(${ar},${ag},${ab},0)`);
+    rx.fillStyle=gr;rx.beginPath();rx.arc(S/2,S/2,R+pad,0,TAU);rx.fill();
+    rx.globalCompositeOperation='destination-in';const m=rx.createLinearGradient(S/2+SUN[0]*R,S/2+SUN[1]*R,S/2-SUN[0]*R,S/2-SUN[1]*R);m.addColorStop(0,'rgba(0,0,0,1)');m.addColorStop(.55,'rgba(0,0,0,.3)');m.addColorStop(1,'rgba(0,0,0,.05)');
+    rx.fillStyle=m;rx.fillRect(0,0,S,S);
+    x.globalCompositeOperation='lighter';x.drawImage(rc,0,0);x.globalCompositeOperation='source-over';
+  }
+  return c;
+}
+let bgKey='';
+function buildBg(){
+  BGS=Math.ceil(Math.hypot(W,H)*1.05);const s=Math.ceil(BGS*Math.min(dpr,1.5)),key=Math.round(s/40);
+  if(bg&&key===bgKey)return;bgKey=key;
+  bg=document.createElement('canvas');bg.width=bg.height=s;const b=bg.getContext('2d'),r=mulberry(7);
+  // deep sky
+  let gr=b.createLinearGradient(0,0,s,s);gr.addColorStop(0,'#05040f');gr.addColorStop(.5,'#090722');gr.addColorStop(1,'#040812');b.fillStyle=gr;b.fillRect(0,0,s,s);
+  // Milky Way band + nebulae, computed at low resolution and smoothly upscaled
+  const N=200,nc=document.createElement('canvas');nc.width=nc.height=N;const nx=nc.getContext('2d'),im=nx.createImageData(N,N),D=im.data;
+  for(let j=0;j<N;j++)for(let i=0;i<N;i++){
+    const u=i/N,v=j/N,band=Math.exp(-Math.pow(((u-v)*.72+.02+.06*Math.sin(u*5))/.2,2));
+    const n1=fbm3(u*3.1,v*3.1,1.7,6),n2=fbm3(u*5.3+11,v*5.3,4.2,5),n3=fbm3(u*9,v*9,8.8,4);
+    const dust=sstep(.5,.66,fbm3(u*7+3,v*7,2.2,5))*band;
+    let R=0,G=0,B=0,a=0;
+    const glow=band*(.35+.65*n1);R+=200*glow;G+=185*glow;B+=230*glow;a+=.42*glow;              // star-cloud glow of the band
+    const mag=sstep(.5,.78,n1)*(.3+band);R+=190*mag;G+=50*mag;B+=170*mag;a+=.55*mag;           // hydrogen-alpha pink
+    const teal=sstep(.55,.8,n2)*(.2+band*.8);R+=30*teal;G+=150*teal;B+=200*teal;a+=.45*teal;  // oxygen teal
+    const hot=sstep(.62,.8,n1*.6+n3*.4)*band;R+=255*hot;G+=170*hot;B+=110*hot;a+=.4*hot;     // warm core knots
+    a=Math.min(.9,a)*(1-dust*.85);
+    const k=(j*N+i)*4;D[k]=Math.min(255,R/(a+.001)*.5);D[k+1]=Math.min(255,G/(a+.001)*.5);D[k+2]=Math.min(255,B/(a+.001)*.5);D[k+3]=255*a;
+  }
+  nx.putImageData(im,0,0);b.imageSmoothingEnabled=true;b.imageSmoothingQuality='high';b.globalAlpha=.85;b.drawImage(nc,0,0,s,s);b.globalAlpha=1;
+  // stars: dense along the band, realistic colour temperatures, a few bright ones with halos and spikes
+  const temps=['#9bb0ff','#aabfff','#cad7ff','#f8f7ff','#fff4ea','#ffe9c4','#ffd2a1','#ffb27a'];
+  for(let i=0;i<2600;i++){
+    let u=r(),v=r();if(i<1500){const t=r(),off=(r()+r()+r()-1.5)*.16;u=t;v=t+off+.03}
+    if(u<0||u>1||v<0||v>1)continue;const m=Math.pow(r(),7),col=temps[Math.floor(r()*temps.length)],x=u*s,y=v*s;
+    b.globalAlpha=.25+.75*Math.min(1,m*3+.2);b.fillStyle=col;const sz=.6+m*2.2;b.beginPath();b.arc(x,y,sz*Math.min(dpr,1.5)*.6,0,TAU);b.fill();
+    if(m>.72){const hr=sz*6,hg=b.createRadialGradient(x,y,0,x,y,hr);hg.addColorStop(0,col);hg.addColorStop(1,'rgba(0,0,0,0)');b.globalAlpha=.35;b.fillStyle=hg;b.beginPath();b.arc(x,y,hr,0,TAU);b.fill()}
+    if(m>.93){const L=sz*9,sg=b.createLinearGradient(x-L,y,x+L,y);sg.addColorStop(0,'rgba(255,255,255,0)');sg.addColorStop(.5,col);sg.addColorStop(1,'rgba(255,255,255,0)');b.globalAlpha=.45;b.fillStyle=sg;b.fillRect(x-L,y-.6,2*L,1.2);const sv=b.createLinearGradient(x,y-L,x,y+L);sv.addColorStop(0,'rgba(255,255,255,0)');sv.addColorStop(.5,col);sv.addColorStop(1,'rgba(255,255,255,0)');b.fillStyle=sv;b.fillRect(x-.6,y-L,1.2,2*L)}
+  }
+  b.globalAlpha=1;
+  // distant sun glow in the upper left, the light source for the planets
+  gr=b.createRadialGradient(s*.06,s*.05,0,s*.06,s*.05,s*.32);gr.addColorStop(0,'rgba(255,240,220,.35)');gr.addColorStop(.15,'rgba(255,200,150,.12)');gr.addColorStop(1,'rgba(0,0,0,0)');b.fillStyle=gr;b.fillRect(0,0,s,s);
+  // ringed gas giant
+  const px=s*.79,py=s*.24,pr=Math.round(s*.085);
+  const giant=renderPlanet(pr,(x,y,z)=>{const t=fbm3(x*2.5,y*2.5,z*2.5,4),lat=y*9+t*2.4,bnd=.5+.5*Math.sin(lat*2.1)*Math.sin(lat*.7+1),
+      sp=Math.exp(-(Math.pow((x-.3)/.16,2)+Math.pow((y-.28)/.08,2)));
+    const c1=[236,206,168],c2=[196,134,96],c3=[160,84,66];const m=bnd*bnd;let R=c1[0]*(1-m)+c2[0]*m,G=c1[1]*(1-m)+c2[1]*m,B=c1[2]*(1-m)+c2[2]*m;
+    const f=fbm3(x*14,y*30,z*14,3)*.25+.88;R*=f;G*=f;B*=f;return[R*(1-sp)+c3[0]*sp*1.2,G*(1-sp)+c3[1]*sp*1.2,B*(1-sp)+c3[2]*sp*1.2]},{tilt:-.35,atm:[255,200,160],amb:.03});
+  const ring=front=>{b.save();b.translate(px,py);b.rotate(-.35);
+    for(let k=0;k<26;k++){const rr=pr*(1.32+k*.034),a=.18+.5*fbm3(k*.7,1,3,2)*(k%7===3?.2:1);
+      b.beginPath();b.ellipse(0,0,rr,rr*.24,0,front?0:Math.PI,front?Math.PI:TAU);b.strokeStyle=`rgba(${225-k*2},${200-k*3},${170-k*3},${a})`;b.lineWidth=pr*.036;b.stroke()}
+    b.restore()};
+  ring(false);b.drawImage(giant,px-giant.width/2,py-giant.height/2);ring(true);
+  // earth-like world with oceans, continents, clouds, ice caps and city lights on the night side
+  const qx=s*.17,qy=s*.75,qr=Math.round(s*.062);
+  const earth=renderPlanet(qr,(x,y,z)=>{
+    const h=fbm3(x*1.8+5,y*1.8,z*1.8,6),ice=sstep(.78,.86,Math.abs(y)+ (h-.5)*.2),cl=sstep(.52,.72,fbm3(x*3+9,y*4.5,z*3,5));
+    let c;if(h>.53){const dry=fbm3(x*4,y*4,z*4+2,3);c=dry>.55?[164,138,92]:[64,120,62]}else{const dp=sstep(.3,.53,h);c=[18+30*dp,52+70*dp,120+70*dp]}
+    c=c.map((v,i)=>v*(1-ice)+[235,240,248][i]*ice);return c.map(v=>v*(1-cl*.9)+245*cl*.9)},
+    {atm:[110,180,255],amb:.02,night:(x,y,z)=>{const h=fbm3(x*1.8+5,y*1.8,z*1.8,6);return h>.53?Math.pow(fbm3(x*25,y*25,z*25,2),6)*1.4:0},spec:(x,y,z)=>fbm3(x*1.8+5,y*1.8,z*1.8,6)>.53?0:.6});
+  b.drawImage(earth,qx-earth.width/2,qy-earth.height/2);
+  // cratered moon
+  const mx=s*.25,my=s*.19,mr=Math.round(s*.03),cr=mulberry(31),craters=Array.from({length:26},()=>{const a=cr()*TAU,z=cr()*2-1,q=Math.sqrt(1-z*z);return[Math.cos(a)*q,Math.sin(a)*q,z,.06+Math.pow(cr(),2)*.22]});
+  const moon=renderPlanet(mr,(x,y,z)=>{let v=150+70*fbm3(x*3,y*3,z*3,5);for(const[a,b2,c,rad]of craters){const d=Math.acos(Math.max(-1,Math.min(1,x*a+y*b2+z*c)));if(d<rad*1.15){v*=d<rad*.8?.72:d<rad?1.12:.95}}return[v,v*.97,v*.95]},{amb:.015});
+  b.drawImage(moon,mx-moon.width/2,my-moon.height/2);
+  // icy outer planet
+  const ix=s*.87,iy=s*.83,ir=Math.round(s*.038);
+  const icy=renderPlanet(ir,(x,y,z)=>{const t=.5+.5*Math.sin(y*7+fbm3(x*3,y*3,z*3,3)*2);return[150+40*t,170+40*t,235]},{atm:[160,190,255],amb:.03,tilt:.4});
+  b.drawImage(icy,ix-icy.width/2,iy-icy.height/2);
+}
+addEventListener('resize',resize);resize();
+
+/* ---------------- LIBRARY (public-domain melodies, re-arranged) ----------------
+   Each bar has a chord and melody notes [midi, length in beats] (0 = rest). meter = beats per bar. */
+const C_=(r,m)=>({root:r,third:m?3:4});
+const B_=(ch,mel)=>({ch,mel});
+const INST={piano:'Пианино',organ:'Орган',flute:'Флейта',strings:'Струнные',bells:'Колокольчики',guitar:'Гитара',accordion:'Аккордеон',harpsichord:'Клавесин',brass:'Духовые',synth:'Синтезатор'};
+const CHN={C:C_(48),D:C_(50),Dm:C_(50,1),E:C_(40),Em:C_(40,1),F:C_(41),G:C_(43),A:C_(45),Am:C_(45,1),Bm:C_(47,1),Bb:C_(46),'F#':C_(42)};
+// "E5:.5 D#5 R:1" → [[76,.5],[75,1],[0,1]]
+const P=s=>s.trim().split(/\s+/).map(tok=>{const[n,l]=tok.split(':'),len=l?+l:1;if(n==='R')return[0,len];
+  const m=n.match(/^([A-G])([#b]?)(\d)$/);return[12*(+m[3]+1)+{C:0,D:2,E:4,F:5,G:7,A:9,B:11}[m[1]]+(m[2]==='#'?1:m[2]==='b'?-1:0),len]});
+const SG=(meta,chords,mel)=>{const cs=chords.trim().split(/\s+/);return Object.assign({oct:0,meter:4,drums:'pop'},meta,{bars:mel.split('|').map((m,i)=>B_(CHN[cs[i%cs.length]],P(m)))})};
+const SONGS=[
+ {title:'Twinkle, Twinkle, Little Star',by:'Народная',tags:['Детские','Колыбельные'],inst:'bells',drums:'soft',bpm:112,oct:12,bars:(()=>{const C=C_(48),F=C_(41),G=C_(43);
+   const a=[[60,1],[60,1],[67,1],[67,1]],b=[[69,1],[69,1],[67,2]],c=[[65,1],[65,1],[64,1],[64,1]],d=[[62,1],[62,1],[60,2]],e=[[67,1],[67,1],[65,1],[65,1]],f=[[64,1],[64,1],[62,2]];
+   return[B_(C,a),B_(F,b),B_(F,c),B_(G,d),B_(C,e),B_(G,f),B_(C,e),B_(G,f),B_(C,a),B_(F,b),B_(F,c),B_(C,d)]})()},
+ {title:'Ода к радости',by:'Бетховен',tags:['Классика'],inst:'organ',bpm:116,oct:12,bars:(()=>{const D=C_(50),Aa=C_(45);
+   const b1=[[66,1],[66,1],[67,1],[69,1]],b2=[[69,1],[67,1],[66,1],[64,1]],b3=[[62,1],[62,1],[64,1],[66,1]];
+   return[B_(D,b1),B_(Aa,b2),B_(D,b3),B_(Aa,[[66,1.5],[64,.5],[64,2]]),B_(D,b1),B_(Aa,b2),B_(D,b3),B_(D,[[64,1.5],[62,.5],[62,2]]),
+     B_(Aa,[[64,1],[64,1],[66,1],[62,1]]),B_(D,[[64,1],[66,.5],[67,.5],[66,1],[62,1]]),B_(Aa,[[64,1],[66,.5],[67,.5],[66,1],[64,1]]),B_(Aa,[[62,1],[64,1],[57,2]]),
+     B_(D,b1),B_(Aa,b2),B_(D,b3),B_(D,[[64,1.5],[62,.5],[62,2]])]})()},
+ {title:'Маленькая ночная серенада',by:'Моцарт',tags:['Классика'],inst:'strings',bpm:120,oct:0,bars:(()=>{const G=C_(43),D=C_(50);
+   return[B_(G,[[67,1],[0,.5],[62,.5],[67,1],[0,.5],[62,.5]]),B_(G,[[67,.5],[62,.5],[67,.5],[71,.5],[74,1],[0,1]]),B_(D,[[72,1],[0,.5],[69,.5],[72,1],[0,.5],[69,.5]]),B_(D,[[72,.5],[69,.5],[66,.5],[69,.5],[62,1],[0,1]])]})()},
+ {title:'Yankee Doodle',by:'Народная',tags:['Народные мира','Детские'],inst:'flute',bpm:126,oct:12,bars:(()=>{const C=C_(48),F=C_(41),G=C_(43);
+   return[B_(C,[[60,1],[60,1],[62,1],[64,1]]),B_(C,[[60,1],[64,1],[62,1],[55,1]]),B_(C,[[60,1],[60,1],[62,1],[64,1]]),B_(G,[[60,2],[59,2]]),
+     B_(C,[[60,1],[60,1],[62,1],[64,1]]),B_(F,[[65,1],[64,1],[62,1],[60,1]]),B_(G,[[59,1],[55,1],[57,1],[59,1]]),B_(C,[[60,2],[60,2]])]})()},
+ {title:'Jingle Bells',by:'Пьерпонт',tags:['Праздничные'],inst:'bells',bpm:132,oct:12,bars:(()=>{const C=C_(48),F=C_(41),G=C_(43),D=C_(50);
+   const e3=[[64,1],[64,1],[64,2]],run=[[64,1],[67,1],[60,1.5],[62,.5]],w=[[64,4]],f4=[[65,1],[65,1],[65,1.5],[65,.5]],f5=[[65,1],[64,1],[64,1],[64,.5],[64,.5]];
+   return[B_(C,e3),B_(C,e3),B_(C,run),B_(C,w),B_(F,f4),B_(C,f5),B_(D,[[64,1],[62,1],[62,1],[64,1]]),B_(G,[[62,2],[67,2]]),
+     B_(C,e3),B_(C,e3),B_(C,run),B_(C,w),B_(F,f4),B_(C,f5),B_(G,[[67,1],[67,1],[65,1],[62,1]]),B_(C,[[60,4]])]})()},
+ {title:'Коробейники',by:'Русская народная',tags:['Русские'],inst:'accordion',bpm:140,oct:0,bars:(()=>{const Am=C_(45,1),E=C_(40),Dm=C_(50,1),C=C_(48);
+   return[B_(Am,[[76,1],[71,.5],[72,.5],[74,1],[72,.5],[71,.5]]),B_(Am,[[69,1],[69,.5],[72,.5],[76,1],[74,.5],[72,.5]]),B_(E,[[71,1.5],[72,.5],[74,1],[76,1]]),B_(Am,[[72,1],[69,1],[69,2]]),
+     B_(Dm,[[0,.5],[74,1],[77,.5],[81,1],[79,.5],[77,.5]]),B_(C,[[76,1.5],[72,.5],[76,1],[74,.5],[72,.5]]),B_(E,[[71,1],[71,.5],[72,.5],[74,1],[76,1]]),B_(Am,[[72,1],[69,1],[69,1],[0,1]])]})()},
+ {title:'К Элизе',by:'Бетховен',tags:['Классика'],inst:'piano',drums:'soft',bpm:92,oct:0,bars:(()=>{const Am=C_(45,1),E=C_(40);const q=.25;
+   return[B_(Am,[[76,q],[75,q],[76,q],[71,q],[74,q],[72,q],[69,2*q],[0,q],[60,q],[64,q],[69,q],[71,2*q],[0,q],[64,q]]),
+     B_(E,[[68,q],[71,q],[72,2*q],[0,q],[64,q],[76,q],[75,q],[76,q],[75,q],[76,q],[71,q],[74,q],[72,q],[69,2*q]]),
+     B_(Am,[[0,q],[60,q],[64,q],[69,q],[71,2*q],[0,q],[64,q],[72,q],[71,q],[69,4*q],[76,q],[75,q]])]})()},
+ {title:'When the Saints Go Marching In',by:'Спиричуэл',tags:['Народные мира'],inst:'brass',bpm:138,oct:12,bars:(()=>{const C=C_(48),F=C_(41),G=C_(43);const pick=[[0,1],[60,1],[64,1],[65,1]];
+   return[B_(C,pick),B_(C,[[67,4]]),B_(C,pick),B_(C,[[67,4]]),B_(C,pick),B_(C,[[67,2],[64,2]]),B_(C,[[60,2],[64,2]]),B_(G,[[62,4]]),
+     B_(C,[[0,1],[64,1],[64,1],[62,1]]),B_(C,[[60,3],[60,1]]),B_(C,[[64,2],[67,2]]),B_(F,[[67,1],[65,3]]),B_(C,[[64,1],[65,1],[67,2]]),B_(C,[[64,2],[60,2]]),B_(G,[[62,4]]),B_(C,[[60,4]])]})()},
+ {title:'В пещере горного короля',by:'Григ',tags:['Классика'],inst:'strings',bpm:132,oct:12,bars:(()=>{const Bm=C_(47,1),Fs=C_(42);
+   return[B_(Bm,[[59,.5],[61,.5],[62,.5],[64,.5],[66,.5],[62,.5],[66,1]]),B_(Fs,[[65,.5],[61,.5],[65,1],[64,.5],[60,.5],[64,1]]),B_(Bm,[[59,.5],[61,.5],[62,.5],[64,.5],[66,.5],[62,.5],[66,.5],[71,.5]]),B_(Bm,[[69,.5],[66,.5],[62,.5],[66,.5],[69,2]]),
+     B_(Fs,[[66,.5],[68,.5],[70,.5],[71,.5],[73,.5],[70,.5],[73,1]]),B_(Fs,[[74,.5],[70,.5],[74,1],[73,.5],[70,.5],[73,1]]),B_(Fs,[[66,.5],[68,.5],[70,.5],[71,.5],[73,.5],[70,.5],[73,.5],[78,.5]]),B_(Fs,[[76,.5],[73,.5],[70,.5],[73,.5],[76,2]])]})()},
+ {title:'Турецкий марш',by:'Моцарт',tags:['Классика'],inst:'piano',bpm:112,oct:0,bars:(()=>{const Am=C_(45,1),Em=C_(40,1);
+   return[B_(Am,[[71,.25],[69,.25],[68,.25],[69,.25],[72,1],[74,.25],[72,.25],[71,.25],[72,.25],[76,1]]),
+     B_(Am,[[77,.25],[76,.25],[75,.25],[76,.25],[83,.25],[81,.25],[80,.25],[81,.25],[83,.25],[81,.25],[80,.25],[81,.25],[84,1]]),
+     B_(Am,[[81,.5],[84,.5],[83,.5],[81,.5],[79,.5],[81,.5],[83,.5],[81,.5]]),B_(Em,[[79,.5],[81,.5],[83,.5],[81,.5],[79,.5],[78,.5],[76,1]])]})()},
+ SG({title:'Менуэт соль мажор',by:'Бах',tags:['Классика'],inst:'harpsichord',bpm:132,meter:3},'G G C G C G D D G G C G C G D G',
+   'D5 G4:.5 A4:.5 B4:.5 C5:.5|D5 G4 G4|E5 C5:.5 D5:.5 E5:.5 F#5:.5|G5 G4 G4|C5 D5:.5 C5:.5 B4:.5 A4:.5|B4 C5:.5 B4:.5 A4:.5 G4:.5|F#4 G4:.5 A4:.5 B4:.5 G4:.5|A4:3|'+
+   'D5 G4:.5 A4:.5 B4:.5 C5:.5|D5 G4 G4|E5 C5:.5 D5:.5 E5:.5 F#5:.5|G5 G4 G4|C5 D5:.5 C5:.5 B4:.5 A4:.5|B4 C5:.5 B4:.5 A4:.5 G4:.5|A4 B4:.5 A4:.5 G4:.5 F#4:.5|G4:3'),
+ SG({title:'Канон ре мажор',by:'Пахельбель',tags:['Классика'],inst:'strings',bpm:116,meter:2},'D A Bm F# G D G A',
+   'F#5:2|E5:2|D5:2|C#5:2|B4:2|A4:2|B4:2|C#5:2|D5:2|C#5:2|B4:2|A4:2|G4:2|F#4:2|G4:2|E4:2|D5 F#5|A5 G5|F#5 D5|F#5 E5|D5 B4|D5 A5|G5 B5|A5 G5'),
+ SG({title:'Колыбельная',by:'Брамс',tags:['Колыбельные','Классика'],inst:'flute',drums:'soft',bpm:104,meter:3},'C C C G G G G G C F C G C F C G C',
+   'R:2 E4:.5 E4:.5|G4:2 E4:.5 E4:.5|G4:2 E4:.5 G4:.5|C5 B4:1.5 A4:.5|A4 G4 D4:.5 E4:.5|F4 D4 D4:.5 E4:.5|F4:2 D4:.5 F4:.5|B4:.5 A4:.5 G4 B4|C5:2 C4:.5 C4:.5|C5:2 A4:.5 F4:.5|G4:2 E4:.5 C4:.5|F4 G4 A4|G4:2 C4:.5 C4:.5|C5:2 A4:.5 F4:.5|G4:2 E4:.5 C4:.5|F4 E4 D4|C4:3'),
+ SG({title:'Братец Яков',by:'Французская народная',tags:['Детские','Народные мира'],inst:'guitar',bpm:120,oct:12},'C C C C C C G C',
+   'C4 D4 E4 C4|C4 D4 E4 C4|E4 F4 G4:2|E4 F4 G4:2|G4:.5 A4:.5 G4:.5 F4:.5 E4 C4|G4:.5 A4:.5 G4:.5 F4:.5 E4 C4|C4 G3 C4:2|C4 G3 C4:2'),
+ SG({title:'Mary Had a Little Lamb',by:'Народная',tags:['Детские'],inst:'piano',bpm:120,oct:12},'C C G C C C G C',
+   'E4 D4 C4 D4|E4 E4 E4:2|D4 D4 D4:2|E4 G4 G4:2|E4 D4 C4 D4|E4 E4 E4 E4|D4 D4 E4 D4|C4:4'),
+ SG({title:'Old MacDonald Had a Farm',by:'Народная',tags:['Детские','Народные мира'],inst:'guitar',bpm:126,oct:12},'G C D G G C D G',
+   'G4 G4 G4 D4|E4 E4 D4:2|B4 B4 A4 A4|G4:3 D4|G4 G4 G4 D4|E4 E4 D4:2|B4 B4 A4 A4|G4:4'),
+ SG({title:'London Bridge',by:'Народная',tags:['Детские'],inst:'bells',bpm:120,oct:12},'C C G C C C G C',
+   'G4:1.5 A4:.5 G4 F4|E4 F4 G4:2|D4 E4 F4:2|E4 F4 G4:2|G4:1.5 A4:.5 G4 F4|E4 F4 G4:2|D4:2 G4:2|E4 C4:3'),
+ SG({title:'Oh! Susanna',by:'Фостер',tags:['Народные мира'],inst:'guitar',bpm:132,oct:12},'C G C C F C C C',
+   'E4:.5 G4:.5 G4:.75 A4:.25 G4:.5 E4:.5 C4:.75 D4:.25|E4:.5 E4:.5 D4:.5 C4:.5 D4:1.5 C4:.25 D4:.25|E4:.5 G4:.5 G4:.75 A4:.25 G4:.5 E4:.5 C4:.75 D4:.25|E4:.5 E4:.5 D4:.5 D4:.5 C4:1.5 C4:.25 D4:.25|'+
+   'F4 F4 A4:.5 A4 A4:.5|G4:.5 G4:.5 E4:.5 C4:.5 D4:1.5 C4:.25 D4:.25|E4:.5 G4:.5 G4:.75 A4:.25 G4:.5 E4:.5 C4:.75 D4:.25|E4:.5 E4:.5 D4:.5 D4:.5 C4:2'),
+ SG({title:'Auld Lang Syne',by:'Шотландская народная',tags:['Народные мира','Праздничные'],inst:'accordion',bpm:108,oct:12},'F F C F Bb F C Dm F',
+   'R:3 C4|F4:1.5 E4:.5 F4 A4|G4:1.5 F4:.5 G4 A4:.5 G4:.5|F4:1.5 F4:.5 A4 C5|D5:3 D5|C5:1.5 A4:.5 A4 F4|G4:1.5 F4:.5 G4 A4:.5 G4:.5|F4:1.5 D4:.5 D4 C4|F4:3 R:1'),
+ SG({title:'We Wish You a Merry Christmas',by:'Английская народная',tags:['Праздничные'],inst:'bells',bpm:150,meter:3},'C C F G G Am F G C',
+   'R:2 G4|C5 C5:.5 D5:.5 C5:.5 B4:.5|A4 A4 A4|D5 D5:.5 E5:.5 D5:.5 C5:.5|B4 G4 G4|E5 E5:.5 F5:.5 E5:.5 D5:.5|C5 A4 G4:.5 G4:.5|A4 D5 B4|C5:2 G4'),
+ SG({title:'Тихая ночь',by:'Грубер',tags:['Праздничные','Колыбельные'],inst:'organ',drums:'soft',bpm:96,meter:3},'C C C C G G C C F F C C F F C C G G C C C G C C',
+   'G4:1.5 A4:.5 G4|E4:3|G4:1.5 A4:.5 G4|E4:3|D5:2 D5|B4:3|C5:2 C5|G4:3|A4:2 A4|C5:1.5 B4:.5 A4|G4:1.5 A4:.5 G4|E4:3|A4:2 A4|C5:1.5 B4:.5 A4|G4:1.5 A4:.5 G4|E4:3|D5:2 D5|F5:1.5 D5:.5 B4|C5:3|E5:3|C5 G4 E4|G4:1.5 F4:.5 D4|C4:3|R:3'),
+ SG({title:'Deck the Halls',by:'Валлийская народная',tags:['Праздничные'],inst:'brass',bpm:132,oct:12},'C C G C C C G C G C D G C C F C',
+   'G4:1.5 F4:.5 E4 D4|C4 D4 E4 C4|D4:.5 E4:.5 F4:.5 D4:.5 E4:1.5 D4:.5|C4 B3 C4:2|G4:1.5 F4:.5 E4 D4|C4 D4 E4 C4|D4:.5 E4:.5 F4:.5 D4:.5 E4:1.5 D4:.5|C4 B3 C4:2|'+
+   'D4:1.5 E4:.5 F4 D4|E4:1.5 F4:.5 G4 D4|E4:.5 F#4:.5 G4 A4:.5 B4:.5 C5|B4 A4 G4:2|G4:1.5 F4:.5 E4 D4|C4 D4 E4 C4|A4:.5 A4:.5 A4:.5 A4:.5 G4:1.5 F4:.5|E4 D4 C4:2'),
+ SG({title:'Happy Birthday',by:'Хилл',tags:['Праздничные'],inst:'piano',bpm:120,meter:3},'C C G G C C F G C',
+   'R:2 G4:.75 G4:.25|A4 G4 C5|B4:2 G4:.75 G4:.25|A4 G4 D5|C5:2 G4:.75 G4:.25|G5 E5 C5|B4 A4 F5:.75 F5:.25|E5 C5 D5|C5:3'),
+ SG({title:'Полёт шмеля',by:'Римский-Корсаков',tags:['Классика','Русские'],inst:'synth',bpm:84},'E E E Am',
+   'E5:.25 D#5:.25 D5:.25 C#5:.25 D5:.25 C#5:.25 C5:.25 B4:.25 C5:.25 B4:.25 A#4:.25 A4:.25 A#4:.25 B4:.25 C5:.25 C#5:.25|'+
+   'D5:.25 C#5:.25 C5:.25 B4:.25 C5:.25 B4:.25 A#4:.25 A4:.25 G#4:.25 G4:.25 F#4:.25 F4:.25 E4:.25 F4:.25 F#4:.25 G4:.25|'+
+   'G#4:.25 A4:.25 A#4:.25 B4:.25 C5:.25 C#5:.25 D5:.25 D#5:.25 E5:.25 F5:.25 E5:.25 D#5:.25 E5:.25 F5:.25 E5:.25 D#5:.25|'+
+   'E5:.25 D#5:.25 D5:.25 C#5:.25 C5:.25 B4:.25 A#4:.25 A4:.25 G#4:.25 A4:.25 B4:.25 C5:.25 E5:1'),
+];
+SONGS.forEach(S=>{S.meter=S.meter||4;S.drums=S.drums||'pop';S.bars.forEach(b=>{let pos=0;b.ev={};for(const[m,l]of b.mel){if(m)(b.ev[Math.round(pos*4)]=b.ev[Math.round(pos*4)]||[]).push([m+S.oct,l]);pos+=l}b.sum=pos})});
+const tone=(ch,k)=>ch.root+({r:0,t:ch.third,f:7,o:12}[k]);
+const songBars=S=>Math.max(16,Math.round(60/(S.meter*60/S.bpm)));
+
+/* ---------------- AUDIO ENGINE ----------------
+   One musical clock drives everything: beats = mAnchor + (audioTime - aAnchor) * rate / BEAT.
+   The rocket raises `rate`, so the music and the tunnel speed up together and basses stay on the beat. */
+let A=null,master,musicBus,shaper,muted=false,playing=false,noiseBuf;
+let SONG=SONGS[0],BEAT=.5,rate=1,aAnchor=0,mAnchor=0,nextStep=0,srcNode=null;
+const mtof=m=>440*Math.pow(2,(m-69)/12);
+function initAudio(){
+  if(A)return;
+  A=new (window.AudioContext||window.webkitAudioContext)({latencyHint:'interactive'});
+  const comp=A.createDynamicsCompressor();comp.threshold.value=-14;comp.ratio.value=3;
+  master=A.createGain();master.gain.value=muted?0:.9;master.connect(comp);comp.connect(A.destination);
+  musicBus=A.createGain();musicBus.gain.value=0;musicBus.connect(master);
+  noiseBuf=A.createBuffer(1,A.sampleRate,A.sampleRate);const d=noiseBuf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;
+  shaper=A.createWaveShaper();const c=new Float32Array(1024);for(let i=0;i<1024;i++){const x=i/512-1;c[i]=Math.tanh(x*2.2)}shaper.curve=c;
+  const bassOut=A.createGain();bassOut.gain.value=.9;shaper.connect(bassOut);bassOut.connect(master);
+  setInterval(schedule,20);
+  idleAudio();
+}
+const mbAt=t=>mAnchor+(t-aAnchor)*rate/BEAT;
+const tAtBeat=b=>aAnchor+(b-mAnchor)*BEAT/rate;
+const latency=()=>A?(A.outputLatency||A.baseLatency||0):0;
+function setRate(r){const now=A.currentTime;mAnchor=mbAt(now);aAnchor=now;rate=r;if(srcNode)srcNode.playbackRate.setValueAtTime(r,now)}
+function env(gn,t,a,peak,dec){gn.gain.setValueAtTime(0,t);gn.gain.linearRampToValueAtTime(peak,t+a);gn.gain.exponentialRampToValueAtTime(.0001,t+a+dec)}
+function kick(t,v){const o=A.createOscillator(),gn=A.createGain();o.frequency.setValueAtTime(110,t);o.frequency.exponentialRampToValueAtTime(48,t+.1);env(gn,t,.002,v,.18);o.connect(gn);gn.connect(musicBus);o.start(t);o.stop(t+.25)}
+function noise(t,type,freq,peak,dec,dest){const s=A.createBufferSource();s.buffer=noiseBuf;const f=A.createBiquadFilter();f.type=type;f.frequency.value=freq;const gn=A.createGain();env(gn,t,.001,peak,dec);s.connect(f);f.connect(gn);gn.connect(dest||musicBus);s.start(t,Math.random()*.5);s.stop(t+dec+.05)}
+/* Instruments: [peak, attack, sustain level, decay time-constant, release time-constant] + an oscillator recipe */
+const INST_P={piano:[.24,.005,.015,.35,.08],organ:[.12,.02,.12,.1,.05],flute:[.18,.05,.15,.2,.08],strings:[.1,.06,.1,.2,.12],bells:[.22,.002,0,.4,.3],
+  guitar:[.22,.003,0,.25,.06],accordion:[.11,.03,.1,.1,.06],harpsichord:[.16,.002,0,.18,.05],brass:[.12,.03,.11,.2,.08],synth:[.12,.01,.09,.2,.06]};
+function voice(t,m,len,inst){
+  const[pk,at0,sus,tc,rel]=INST_P[inst]||INST_P.synth,secs=len*BEAT/rate,at=inst==='strings'?Math.min(at0,secs*.3):at0;
+  const d=Math.max(at+.02,secs*.92),f=mtof(m),end=t+d+rel*6;
+  const out=A.createGain(),gg=out.gain;gg.setValueAtTime(0,t);gg.linearRampToValueAtTime(pk,t+at);gg.setTargetAtTime(sus,t+at,tc);gg.setTargetAtTime(0,t+d,rel);out.connect(musicBus);
+  const oscs=[];
+  const add=(type,mul,vol,det,dest)=>{const o=A.createOscillator(),v=A.createGain();o.type=type;o.frequency.value=f*mul;o.detune.value=det||0;v.gain.value=vol;o.connect(v);v.connect(dest||out);oscs.push(o);return o};
+  const filt=(type,fr,q)=>{const fl=A.createBiquadFilter();fl.type=type;fl.frequency.value=fr;fl.Q.value=q||.7;fl.connect(out);return fl};
+  const lfo=(hz,amt,target)=>{const l=A.createOscillator(),lg=A.createGain();l.frequency.value=hz;lg.gain.value=amt;l.connect(lg);lg.connect(target);oscs.push(l)};
+  switch(inst){
+    case 'piano':add('triangle',1,1);add('sine',2,.25);break;
+    case 'organ':add('sine',1,.7);add('sine',2,.35);add('sine',3,.2);add('sine',4,.08);break;
+    case 'flute':{const o=add('sine',1,1);add('triangle',1,.15);if(secs>.3)lfo(5,7,o.detune);break}
+    case 'strings':{const fl=filt('lowpass',2600);const a=add('sawtooth',1,.6,-7,fl),b=add('sawtooth',1,.6,7,fl);if(secs>.35){lfo(5.5,6,a.detune);lfo(5.2,6,b.detune)}break}
+    case 'bells':add('sine',1,1);add('sine',2.76,.3);add('sine',5.4,.08);break;
+    case 'guitar':{const fl=filt('lowpass',3000,2);fl.frequency.setValueAtTime(3200,t);fl.frequency.exponentialRampToValueAtTime(700,t+.4);add('sawtooth',1,.8,0,fl);add('triangle',1,.4,0,fl);break}
+    case 'accordion':{const fl=filt('lowpass',2200),tr=A.createGain();tr.gain.value=.75;tr.connect(fl);lfo(6,.25,tr.gain);add('square',1,.35,-6,tr);add('sawtooth',1,.35,6,tr);break}
+    case 'harpsichord':{const fl=filt('highpass',350);add('sawtooth',1,.5,0,fl);add('square',2,.2,0,fl);break}
+    case 'brass':{const fl=filt('lowpass',600,1.5);fl.frequency.setValueAtTime(500,t);fl.frequency.linearRampToValueAtTime(2600,t+.06);fl.frequency.setTargetAtTime(1500,t+.06,.2);add('sawtooth',1,.8,0,fl);add('sawtooth',1,.4,8,fl);break}
+    default:{const fl=filt('lowpass',3200);add('square',1,.35,0,fl);add('triangle',1,1,0,fl)}
+  }
+  oscs.forEach(o=>{o.start(t);o.stop(end)});
+}
+function pad(t,ch,beats){const d=beats*BEAT/rate;[ch.root+12,ch.root+12+ch.third,ch.root+19].forEach(m=>{const o=A.createOscillator(),f=A.createBiquadFilter(),gn=A.createGain();o.type='sawtooth';o.frequency.value=mtof(m);o.detune.value=(Math.random()-.5)*12;
+  f.type='lowpass';f.frequency.value=1400;gn.gain.setValueAtTime(0,t);gn.gain.linearRampToValueAtTime(.02,t+.25);gn.gain.linearRampToValueAtTime(0,t+d);o.connect(f);f.connect(gn);gn.connect(musicBus);o.start(t);o.stop(t+d+.05)})}
+function schedule(){
+  if(!A||!playing||SONG.custom)return;
+  const now=A.currentTime,mt=SONG.meter,spb=mt*4;
+  while(tAtBeat(nextStep/4)<now+.1){
+    const t=Math.max(now,tAtBeat(nextStep/4)),s=nextStep%spb,bar=SONG.bars[Math.floor(nextStep/spb)%SONG.bars.length];
+    if(s===0)pad(t,bar.ch,mt);
+    if(SONG.drums==='soft'){if(s===0)kick(t,.3);if(s%4===0&&s)noise(t,'highpass',9000,.05,.04)}
+    else{
+      if(s%4===0&&(mt!==3||s===0))kick(t,.55);
+      if(s%2===0)noise(t,'highpass',8000,s%4===2?.12:.06,.04);
+      if(mt===4&&(s===4||s===12)||mt===2&&s===4)noise(t,'bandpass',1900,.22,.12);
+      if(mt===3&&(s===4||s===8))noise(t,'bandpass',2200,.1,.08);
+    }
+    const ev=bar.ev[s];if(ev)for(const[m,l]of ev)voice(t,m,l,SONG.inst);
+    nextStep++;
+  }
+}
+let idleT=0;
+function idleAudio(){clearTimeout(idleT);idleT=setTimeout(()=>{if(A&&!playing&&A.state==='running')A.suspend()},3500)}
+async function wake(){initAudio();clearTimeout(idleT);if(A.state!=='running'){try{await A.resume()}catch(e){}}}
+async function startMusic(song){
+  await wake();
+  if(srcNode){try{srcNode.stop()}catch(e){}srcNode=null}
+  SONG=song;rate=1;const now=A.currentTime;
+  musicBus.gain.cancelScheduledValues(now);musicBus.gain.setValueAtTime(song.custom?.95:.55,now);
+  if(song.custom){
+    BEAT=song.beat;const st=now+.15;
+    srcNode=A.createBufferSource();srcNode.buffer=song.buffer;
+    const shelf=A.createBiquadFilter();shelf.type='lowshelf';shelf.frequency.value=140;shelf.gain.value=-7; // make room for the bass you catch
+    srcNode.connect(shelf);shelf.connect(musicBus);srcNode.start(st);
+    aAnchor=st;mAnchor=-song.offset/BEAT;
+  }else{BEAT=60/song.bpm;aAnchor=now+.15;mAnchor=0;nextStep=0}
+  playing=true;
+}
+function stopMusic(){if(!A)return;playing=false;idleAudio();const now=A.currentTime;musicBus.gain.setTargetAtTime(0,now,.08);if(srcNode){const s=srcNode;srcNode=null;try{s.stop(now+.5)}catch(e){}}}
+function beatPhase(){if(!A||!playing||state==='paused')return performance.now()/500%1;const b=mbAt(A.currentTime-latency());return((b%1)+1)%1}
+
+/* Electric-bass voice: plucked string attack, warm body, sub, slight amp saturation */
+function bassPluck(t,m){
+  const f=mtof(m),out=A.createGain(),lp=A.createBiquadFilter();
+  lp.type='lowpass';lp.Q.value=4;lp.frequency.setValueAtTime(2600,t);lp.frequency.exponentialRampToValueAtTime(420,t+.28);
+  const saw=A.createOscillator(),sq=A.createOscillator(),sub=A.createOscillator(),sg=A.createGain(),qg=A.createGain(),bg2=A.createGain();
+  saw.type='sawtooth';saw.frequency.value=f;sq.type='square';sq.frequency.value=f;sq.detune.value=5;sub.type='sine';sub.frequency.value=f/2;
+  sg.gain.value=.55;qg.gain.value=.25;bg2.gain.value=.6;
+  saw.connect(sg);sq.connect(qg);sg.connect(lp);qg.connect(lp);lp.connect(out);sub.connect(bg2);bg2.connect(out);
+  out.gain.setValueAtTime(0,t);out.gain.linearRampToValueAtTime(.75,t+.004);out.gain.exponentialRampToValueAtTime(.38,t+.12);out.gain.exponentialRampToValueAtTime(.0001,t+.62);
+  out.connect(shaper);
+  [saw,sq,sub].forEach(o=>{o.start(t);o.stop(t+.7)});
+  noise(t,'bandpass',2200,.12,.018,shaper);
+}
+// the note sounds exactly on the beat the bass was placed on (or right away if caught a hair late)
+function playBass(o){if(!A)return;const t=Math.max(A.currentTime,tAtBeat(o.beat));bassPluck(t,o.midi+(SONG.custom&&rate>1?7:0))}
+function fanfare(){
+  const t=A.currentTime+.05;
+  [[67,0],[72,.11],[76,.22],[79,.33],[84,.5]].forEach(([m,dt],i)=>{['square','triangle'].forEach((ty,j)=>{const o=A.createOscillator(),gn=A.createGain();o.type=ty;o.frequency.value=mtof(m);
+    env(gn,t+dt,.01,j?.22:.07,i===4?1.4:.25);o.connect(gn);gn.connect(master);o.start(t+dt);o.stop(t+dt+1.6)})});
+  [72,76,79].forEach(m=>{const o=A.createOscillator(),gn=A.createGain(),v=A.createOscillator(),vg=A.createGain();o.type='sawtooth';o.frequency.value=mtof(m);v.frequency.value=5.5;vg.gain.value=6;v.connect(vg);vg.connect(o.detune);
+    const f=A.createBiquadFilter();f.type='lowpass';f.frequency.value=2400;env(gn,t+.5,.05,.06,1.8);o.connect(f);f.connect(gn);gn.connect(master);o.start(t+.5);v.start(t+.5);o.stop(t+2.5);v.stop(t+2.5)});
+  bassPluck(t+.5,48);noise(t+.5,'highpass',6000,.18,1.2,master);
+}
+function failSound(){const t=A.currentTime,o=A.createOscillator(),gn=A.createGain();o.type='sawtooth';o.frequency.setValueAtTime(330,t);o.frequency.exponentialRampToValueAtTime(70,t+.7);env(gn,t,.01,.18,.8);o.connect(gn);gn.connect(master);o.start(t);o.stop(t+.9)}
+/* power-up sounds: each one has its own character */
+function sfx(kind){
+  if(!A||A.state!=='running')return;const t=A.currentTime+.01,out=A.createGain();out.gain.value=.9;out.connect(master);
+  const osc=(type,f,t0,dur,peak,dest)=>{const o=A.createOscillator(),g2=A.createGain();o.type=type;o.frequency.setValueAtTime(f,t0);env(g2,t0,.008,peak,dur);o.connect(g2);g2.connect(dest||out);o.start(t0);o.stop(t0+dur+.1);return o};
+  if(kind==='magnet'){
+    // electric "wub-wub" rising, with a metallic snap and sparkles
+    const lp=A.createBiquadFilter();lp.type='lowpass';lp.Q.value=9;lp.connect(out);
+    lp.frequency.setValueAtTime(220,t);lp.frequency.exponentialRampToValueAtTime(2600,t+.55);
+    const wob=A.createOscillator(),wg=A.createGain();wob.frequency.setValueAtTime(7,t);wob.frequency.linearRampToValueAtTime(16,t+.6);wg.gain.value=900;wob.connect(wg);wg.connect(lp.frequency);wob.start(t);wob.stop(t+.8);
+    [0,7].forEach(d=>{const o=osc('sawtooth',110,t,.7,.28,lp);o.detune.value=d;o.frequency.exponentialRampToValueAtTime(330,t+.6)});
+    osc('square',1760,t+.02,.05,.08);[2093,2637,3136,3951].forEach((f,i)=>osc('sine',f,t+.32+i*.06,.18,.1));
+  }else if(kind==='shield'){
+    // crystal shimmer: bell arpeggio over a deep "whomp" and an airy swell
+    const w=osc('sine',140,t,.5,.5);w.frequency.exponentialRampToValueAtTime(55,t+.4);
+    [72,76,79,84,88].forEach((m,i)=>{const f=mtof(m);osc('sine',f,t+i*.055,.9,.14);osc('sine',f*2.76,t+i*.055,.35,.03)});
+    noise(t,'highpass',7000,.12,.9,out);
+  }else if(kind==='rocket'){
+    // ignition: rising whoosh + engine rumble + launch ping
+    const bp=A.createBiquadFilter();bp.type='bandpass';bp.Q.value=1.4;bp.frequency.setValueAtTime(250,t);bp.frequency.exponentialRampToValueAtTime(5000,t+.7);bp.connect(out);
+    const s2=A.createBufferSource();s2.buffer=noiseBuf;const ng=A.createGain();ng.gain.setValueAtTime(0,t);ng.gain.linearRampToValueAtTime(.6,t+.15);ng.gain.exponentialRampToValueAtTime(.001,t+.95);s2.connect(ng);ng.connect(bp);s2.start(t);s2.stop(t+1);
+    const r=osc('sawtooth',55,t,.9,.3);r.frequency.exponentialRampToValueAtTime(190,t+.8);
+    osc('triangle',880,t+.45,.4,.18).frequency.exponentialRampToValueAtTime(1760,t+.6);
+  }else if(kind==='shieldBreak'){
+    noise(t,'highpass',3500,.35,.35,out);[96,91,88,84].forEach((m,i)=>osc('sine',mtof(m),t+i*.04,.3,.1));
+  }else if(kind==='end'){
+    const o=osc('triangle',900,t,.35,.18);o.frequency.exponentialRampToValueAtTime(260,t+.3);
+  }
+}
+function blip(f1,f2){if(!A)return;const t=A.currentTime,o=A.createOscillator(),gn=A.createGain();o.type='triangle';o.frequency.setValueAtTime(f1,t);o.frequency.exponentialRampToValueAtTime(f2,t+.18);env(gn,t,.005,.25,.25);o.connect(gn);gn.connect(master);o.start(t);o.stop(t+.3)}
+
+/* ---------------- DIFFICULTY + MAP BUILDER (fixed seeds: a track is the same every time) ---------------- */
+const DIFF=[
+  {name:'Легко', speed:5,  rocks:.2, gap:2.4, ringEvery:6,jump:[.5,.85],mul:1,curve:.032},
+  {name:'Норма', speed:6.5,rocks:.38,gap:1.95,ringEvery:4,jump:[.7,1.2],mul:1.5,curve:.046},
+  {name:'Сложно',speed:8.5,rocks:.6, gap:1.55,ringEvery:3,jump:[.9,1.6],mul:2.2,curve:.062},
+];
+const ZP=1.25,ZFAR=22,RW=1,RP=.78,RINGS=36,SECT=16;
+function angDiff(a,b){let d=((a-b)%TAU+TAU)%TAU;return d>Math.PI?d-TAU:d}
+/* Takes bass beats (with notes) + bonuses, gives them reachable but scattered angles, then adds asteroids that never block the way */
+function buildMap(P){
+  const rnd=mulberry(P.seed),U=P.U,objs=[],route=[],meter=P.meter||4;
+  const jump=()=>P.jump[0]+rnd()*(P.jump[1]-P.jump[0]);
+  const shape=()=>Array.from({length:9},()=>.75+rnd()*.35);
+  const items=[...P.basses.map(b=>({t:'bass',beat:b[0],midi:b[1]})),...P.bonuses.map(b=>({t:b[1],beat:b[0]}))].sort((a,b)=>a.beat-b.beat);
+  let a=0,dir=1,mode=0,lastBar=-1;
+  for(const it of items){
+    const bar=Math.floor(it.beat/meter);
+    if(bar!==lastBar){mode=Math.floor(rnd()*3);if(mode===1)dir=rnd()<.5?1:-1;lastBar=bar}
+    if(mode===0)dir=-dir;else if(mode===2)dir=rnd()<.5?1:-1;
+    const prev=route.length?route[route.length-1][0]:-9,gapBeats=it.beat-prev;
+    a+=dir*jump()*Math.min(1,Math.max(.6,gapBeats));
+    objs.push({t:it.t,beat:it.beat,wz:it.beat*U,a,s:it.t==='bass'?.12:.14,midi:it.midi});route.push([it.beat,a]);
+  }
+  const near=x=>{let p=null,n=null;for(const r of route){if(r[0]<=x)p=r;else{n=r;break}}return(p&&n&&n[0]-p[0]<=2)?[p,n]:null};
+  const blocked=(x,ang,sz)=>{
+    for(const r of route)if(Math.abs(r[0]-x)*U<Math.max(1.6,U*.6)&&Math.abs(angDiff(r[1],ang))*RP<sz+.12+.4)return true;
+    const pn=near(x);if(!pn)return false;
+    const[p,n]=pn,span=angDiff(n[1],p[1]),d=angDiff(ang,p[1]),m=(sz+.3)/RP;
+    return span>=0?(d>-m&&d<span+m):(d<m&&d>span-m);
+  };
+  const rock=(x,ang,sz)=>objs.push({t:'rock',wz:x*U,a:ang,s:sz,rot:rnd()*TAU,vr:(rnd()-.5)*3,shape:shape()});
+  const ringBeats=P.ringEvery*meter,ringPhase=Math.min(2,meter-1);
+  for(let b=P.startBeat;b<P.beats-meter;b++){
+    const x=b+.5;
+    if(rnd()<P.rockProb(x)){for(let k=0;k<4;k++){const ang=rnd()*TAU,sz=.15+rnd()*.07;if(!blocked(x,ang,sz)){rock(x,ang,sz);break}}}
+    if(b%ringBeats===ringPhase&&b>=meter*2&&P.rockProb(x)>.05){
+      const pn=near(x);let c,w=P.gap;
+      if(pn){const span=angDiff(pn[1][1],pn[0][1]);c=pn[0][1]+span/2;w+=Math.abs(span)}else{const r=route.find(r=>r[0]>x)||route[route.length-1];c=r?r[1]:0}
+      if(w<TAU-1.2){const n=Math.round(4+P.rings*6);for(let k=0;k<n;k++){const ang=c+w/2+(k+.5)*(TAU-w)/n,sz=.17;
+        let ok=true;for(const r of route)if(Math.abs(r[0]-x)*U<1.2&&Math.abs(angDiff(r[1],ang))*RP<sz+.5)ok=false;if(ok)rock(x,ang,sz)}}
+    }
+  }
+  objs.sort((a,b)=>a.wz-b.wz);
+  // tunnel bends: smooth arcs left/right/up/down; deterministic per track
+  const crnd=mulberry((P.seed^0x5bd1e995)>>>0),curves=[],len=P.beats*U,kmax=P.curve||.03;
+  for(let w=14+crnd()*10;w<len-10;){
+    const L=22+crnd()*38,dirs=[0,Math.PI,Math.PI/2,-Math.PI/2],phi=dirs[crnd()<.7?Math.floor(crnd()*2):2+Math.floor(crnd()*2)];
+    curves.push({w0:w,w1:Math.min(len-4,w+L),k:kmax*(.55+crnd()*.45),phi});w+=L+8+crnd()*30;
+  }
+  return{objs,len,total:objs.filter(o=>o.t==='bass').length,U,beats:P.beats,curves};
+}
+const BASSPATS={
+  4:[['r','r','f','o'],['r','o','f','r'],['r','f','o','f'],['r',null,'f','o'],['o','f','r','f'],['r','t','f',null]],
+  3:[['r','f','o'],['r','o','f'],['r',null,'f'],['o','f','r'],['r','t','f']],
+  2:[['r','f'],['r','o'],['o','f'],['r',null],['t','f']],
+};
+const BONUS_PLAN=[[4,'shield'],[8,'magnet'],[13,'rocket'],[18,'shield'],[22,'magnet'],[27,'rocket'],[32,'shield'],[38,'magnet'],[44,'rocket'],[50,'shield'],[56,'magnet']];
+function genLevel(si,di){
+  const S=SONGS[si],Dp=DIFF[di],mt=S.meter,bars=songBars(S),rnd=mulberry(si*7919+di*131+3),basses=[],bonuses=[],bb={};
+  BONUS_PLAN.forEach(([b,t])=>{if(b<bars-3){bb[b]=1;bonuses.push([b*mt+Math.floor(mt/2),t])}});
+  const pats=BASSPATS[mt];
+  for(let bar=1;bar<bars-1;bar++){
+    if(bb[bar]||bar%4===3)continue;
+    const ch=S.bars[bar%S.bars.length].ch;
+    pats[Math.floor(rnd()*pats.length)].forEach((k,j)=>{if(k)basses.push([bar*mt+j,tone(ch,k)])});
+  }
+  const m=buildMap({seed:si*1009+di*97+7,curve:Dp.curve,U:Dp.speed*60/S.bpm,beats:bars*mt,meter:mt,startBeat:mt,jump:Dp.jump,gap:Dp.gap,ringEvery:Dp.ringEvery,rings:Dp.rocks,rockProb:()=>Dp.rocks,basses,bonuses});
+  m.song=S;m.title=S.title;m.si=si;m.di=di;return m;
+}
+
+/* plain-JS signal helpers (no OfflineAudioContext, which stalls on some phones) */
+const tick=()=>new Promise(r=>setTimeout(r,0));
+function biquad(x,type,f0,sr){
+  const w=2*Math.PI*f0/sr,c=Math.cos(w),al=Math.sin(w)/(2*Math.SQRT1_2);let b0,b1,b2;
+  if(type==='low'){b0=(1-c)/2;b1=1-c;b2=b0}else{b0=(1+c)/2;b1=-(1+c);b2=b0}
+  const a0=1+al,a1=-2*c/a0,a2=(1-al)/a0;b0/=a0;b1/=a0;b2/=a0;
+  const y=new Float32Array(x.length);let x1=0,x2=0,y1=0,y2=0;
+  for(let i=0;i<x.length;i++){const v=b0*x[i]+b1*x1+b2*x2-a1*y1-a2*y2;x2=x1;x1=x[i];y2=y1;y1=v;y[i]=v}return y;
+}
+const chain=(x,sr,list)=>list.reduce((v,[t,f])=>biquad(v,t,f,sr),x);
+async function analyzeSong(buf,name,say){
+  say=say||(()=>{});
+  // mono mix, anti-alias, decimate to ~11 kHz
+  say('Готовлю звук…');await tick();
+  const src=buf.sampleRate,dec=Math.max(1,Math.round(src/11025)),sr=src/dec;
+  let mono=new Float32Array(buf.length);const chs=buf.numberOfChannels;
+  for(let c=0;c<chs;c++){const d=buf.getChannelData(c);for(let i=0;i<d.length;i++)mono[i]+=d[i]/chs}
+  if(dec>1)mono=chain(mono,src,[['low',sr*.42],['low',sr*.42]]);
+  const len=Math.floor(mono.length/dec),full=new Float32Array(len);for(let i=0;i<len;i++)full[i]=mono[i*dec];mono=null;
+  await tick();say('Ищу бас…');await tick();
+  const low=chain(full,sr,[['low',170],['low',170]]);
+  const bassBand=chain(full,sr,[['high',62],['high',62],['low',320],['low',320]]); // without the kick's sub thump, for note pitch
+  await tick();say('Ищу темп и доли…');await tick();
+  const hop=128,hs=hop/sr,N=Math.floor(len/hop),eF=new Float32Array(N),eL=new Float32Array(N),rms=new Float32Array(N);
+  for(let n=0;n<N;n++){let a=0,b=0;for(let i=n*hop;i<(n+1)*hop;i++){a+=full[i]*full[i];b+=low[i]*low[i]}rms[n]=Math.sqrt(a/hop);eF[n]=Math.log(1e-7+a/hop);eL[n]=Math.log(1e-7+b/hop)}
+  const raw=new Float32Array(N),oL=new Float32Array(N);
+  for(let n=1;n<N;n++){const dl=Math.max(0,eL[n]-eL[n-1]);oL[n]=dl;raw[n]=Math.max(0,eF[n]-eF[n-1])+1.3*dl}
+  const o=new Float32Array(N);
+  for(let n=0;n<N;n++){let m=0,c=0;for(let k=Math.max(0,n-10);k<Math.min(N,n+11);k++){m+=raw[k];c++}o[n]=Math.max(0,raw[n]-m/c)}
+  // tempo by autocorrelation (70–180 BPM, gently preferring ~120)
+  const minL=Math.floor(60/180/hs),maxL=Math.ceil(60/70/hs),r=new Float32Array(maxL*2+2);
+  for(let L=minL;L<=Math.min(maxL*2+1,N-1);L++){let s=0;for(let n=L;n<N;n++)s+=o[n]*o[n-L];r[L]=s/(N-L)}
+  let bestL=minL,bs=-1;
+  for(let L=minL;L<=maxL;L++){const bpm=60/(L*hs),w=Math.exp(-.5*Math.pow(Math.log2(bpm/120)/.8,2)),s=(r[L]+.5*(r[2*L]||0))*w;if(s>bs){bs=s;bestL=L}}
+  let P=bestL;{const y0=r[bestL-1],y1=r[bestL],y2=r[bestL+1],den=y0-2*y1+y2;if(den<0)P=bestL+.5*(y0-y2)/den}
+  // fine-tune period and phase so the grid lines up with the hits across the whole song
+  const val=x=>{const i=Math.round(x);let m=0;for(let d=-1;d<=1;d++){const v=o[i+d];if(v>m)m=v}return m||0};
+  let best={s:-1,p:P,ph:0};
+  for(let k=-12;k<=12;k++){const p=P*(1+k*.0006);for(let ph=0;ph<p;ph+=1){let s=0;for(let x=ph;x<N-1;x+=p)s+=val(x);if(s>best.s)best={s,p,ph}}}
+  const beat=best.p*hs,offset=best.ph*hs,beats=Math.max(4,Math.floor((buf.duration-offset)/beat)-1);
+  await tick();say('Расставляю басы и астероиды…');await tick();
+  // per-beat loudness and bass hits
+  const at=sec=>Math.max(0,Math.min(N-1,Math.round(sec/hs)));
+  const loud=[],hitL=[];
+  for(let b=0;b<beats*2;b++){const sec=offset+b*beat/2,i=at(sec);let m=0,e=0;for(let d=-2;d<=2;d++){m=Math.max(m,oL[Math.max(0,Math.min(N-1,i+d))]||0)}for(let d=0;d<Math.round(beat/hs/2);d++)e+=rms[Math.min(N-1,i+d)];loud.push(e/Math.max(1,Math.round(beat/hs/2)));hitL.push(m)}
+  const sorted=a=>[...a].sort((x,y)=>x-y),q=(a,p)=>a[Math.floor(p*(a.length-1))];
+  const ls=sorted(loud),lMax=q(ls,.95)||1,silent=Math.min(q(ls,.1)*1.5,lMax*.08);
+  const onBeats=hitL.filter((v,i)=>i%2===0&&loud[i]>silent),th1=q(sorted(onBeats),.4)||0,th2=q(sorted(hitL),.9)||0;
+  const pitchAt=sec=>{const low=bassBand,i0=Math.floor((sec+.07)*sr),Wn=1024;if(i0+Wn+300>low.length)return null;let e=0;for(let i=0;i<Wn;i++)e+=low[i0+i]*low[i0+i];if(e<1e-4)return null;
+    const L0=Math.floor(sr/220),L1=Math.ceil(sr/41),ac=new Float32Array(L1+2);let bv=-1,bL=0;for(let L=L0;L<=L1+1;L++){let s=0;for(let i=0;i<Wn;i++)s+=low[i0+i]*low[i0+i+L];ac[L]=s/e;if(ac[L]>bv)bv=ac[L]}
+    // first strong peak = the fundamental (later peaks are just its multiples)
+    for(let L=L0+1;L<=L1;L++)if(ac[L]>=bv*.85&&ac[L]>=ac[L-1]&&ac[L]>=ac[L+1]){bL=L;break}
+    if(bv<.3||!bL)return null;let m=Math.round(69+12*Math.log2(sr/bL/440));if(!isFinite(m))return null;return 36+((m-36)%12+12)%12};
+  const bars=beats/4,basses=[],bonuses=[],types=['shield','magnet','rocket'];
+  for(let bar=bars>24?6:3,k=0;bar<bars-3;bar+=bars>24?10:6,k++)bonuses.push([bar*4+2,types[k%3]]);
+  let lastMidi=45,lastBeat=-9;
+  for(let h=bars>8?8:4;h<beats*2-3;h++){
+    const b=h/2,on=h%2===0;if(loud[h]<=silent)continue;
+    if(bonuses.some(x=>Math.abs(x[0]-b)<1.5))continue;
+    if(!(on?hitL[h]>=th1:hitL[h]>=th2))continue;
+    if(b-lastBeat<(on?.99:.5))continue;
+    const m=pitchAt(offset+b*beat);if(m)lastMidi=m;
+    basses.push([b,lastMidi]);lastBeat=b;
+  }
+  const energy=x=>{const i=Math.max(0,Math.min(loud.length-1,Math.round(x*2)));return loud[i]<=silent?0:Math.min(1,loud[i]/lMax)};
+  const Dp=DIFF[save.diff];
+  const map=buildMap({seed:Math.floor(beat*1e6)%100000+beats,curve:Dp.curve,U:Dp.speed*beat,beats,meter:4,startBeat:bars>8?8:4,jump:Dp.jump,gap:Dp.gap,ringEvery:Dp.ringEvery,rings:Dp.rocks,rockProb:x=>(.08+.42*energy(x))*Dp.rocks/.38,basses,bonuses});
+  map.di=save.diff;
+  map.song={custom:true,title:name,buffer:buf,beat,offset};map.title=name;map.bpm=Math.round(60/beat);
+  return map;
+}
+
+
+/* ---------------- SAVE, COINS, UPGRADES ---------------- */
+let save={coins:0,up:{},skin:'base',skins:['base'],best:{},diff:1};
+try{save=Object.assign(save,JSON.parse(localStorage.getItem('orbita-v3')||'{}'))}catch(e){}
+const persist=()=>{try{localStorage.setItem('orbita-v3',JSON.stringify(save))}catch(e){}};
+const UPG=[
+  {id:'turn', name:'Манёвренность',desc:'Корабль быстрее поворачивает',max:5,base:40,fx:l=>`+${l*12}% к повороту`},
+  {id:'grab', name:'Хват',desc:'Басы ловятся с большего расстояния',max:5,base:50,fx:l=>`+${l*12}% к радиусу`},
+  {id:'life', name:'Броня',desc:'Дополнительные жизни на старте',max:3,base:120,fx:l=>`${3+l} жизни`},
+  {id:'mag',  name:'Мощный магнит',desc:'Магнит работает дольше и тянет дальше',max:5,base:45,fx:l=>`${20+l*4} с`},
+  {id:'rkt',  name:'Форсаж',desc:'Ракета летит дольше: до 10 секунд',max:7,base:30,fx:l=>`${3+l} с`},
+  {id:'shd',  name:'Прочный щит',desc:'Щит выдерживает больше ударов',max:2,base:140,fx:l=>`${1+l} ${l?'удара':'удар'}`},
+  {id:'start',name:'Стартовый щит',desc:'Каждый полёт начинается со щитом',max:1,base:160,fx:l=>l?'куплен':'нет'},
+  {id:'grace',name:'Восстановление',desc:'Дольше неуязвим после удара',max:4,base:35,fx:l=>`${(1.6+l*.4).toFixed(1)} с`},
+  {id:'luck', name:'Уклонение',desc:'Шанс пролететь сквозь астероид без урона',max:4,base:70,fx:l=>`${l*8}%`},
+  {id:'coin', name:'Копилка',desc:'Больше монет за каждый полёт',max:5,base:80,fx:l=>`+${l*20}% монет`},
+];
+const SKINS=[
+  {id:'base', name:'Лунный',price:0,  body:'#f1eeff',cab:'#b07cff',eng:'#ffc078'},
+  {id:'sun',  name:'Закат', price:120,body:'#ffb37a',cab:'#ff5470',eng:'#ffe08a'},
+  {id:'neon', name:'Неон',  price:200,body:'#3ee6ff',cab:'#ff4fd8',eng:'#b6fffb'},
+  {id:'mint', name:'Изумруд',price:250,body:'#7dffb0',cab:'#1f8f6a',eng:'#e6ffd0'},
+  {id:'gold', name:'Золото',price:400,body:'#ffd166',cab:'#a0522d',eng:'#fff4c2'},
+  {id:'ghost',name:'Призрак',price:600,body:'rgba(220,230,255,.55)',cab:'#8fb8ff',eng:'#ffffff'},
+];
+const lvU=id=>save.up[id]||0;
+const cost=(u,l)=>Math.round(u.base*Math.pow(l+1,1.6)/5)*5;
+const skin=()=>SKINS.find(s=>s.id===save.skin)||SKINS[0];
+let shown=save.coins,pendingFly=0;
+function showCoins(){if(!pendingFly)shown=save.coins;$('walletVal').textContent=shown}
+function bumpWallet(){const w=$('wallet');w.classList.remove('bump');void w.offsetWidth;w.classList.add('bump')}
+function addCoins(n){save.coins+=n;persist();pendingFly+=n} // saved right away; the wallet catches up when the coins fly in
+/* coins fly from the reward to the wallet along a curve, spinning, and the balance counts up as each one lands */
+function flyCoins(){
+  const n=pendingFly;if(!n){showCoins();return Promise.resolve()}
+  const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches,src=$('rewardCoin').getBoundingClientRect(),dst=$('walletCoin').getBoundingClientRect();
+  $('wallet').hidden=false;
+  if(reduce||!src.width){pendingFly=0;showCoins();bumpWallet();return Promise.resolve()}
+  wake();
+  const k=Math.min(18,Math.max(5,Math.ceil(n/3))),base=Math.floor(n/k);let rest=n-base*k,landed=0;
+  const sx=src.left+src.width/2,sy=src.top+src.height/2,ex=dst.left+dst.width/2,ey=dst.top+dst.height/2;
+  return new Promise(done=>{
+    for(let i=0;i<k;i++){
+      const el=document.createElement('span');el.className='c3d fly';el.innerHTML='<i></i>';$('flyLayer').appendChild(el);
+      const share=base+(rest-->0?1:0),spread=(Math.random()-.5)*160,cx1=sx+spread,cy1=Math.min(sy,ey)-60-Math.random()*90,frames=[];
+      for(let j=0;j<=12;j++){const t=j/12,u=1-t,x=u*u*sx+2*u*t*cx1+t*t*ex,y=u*u*sy+2*u*t*cy1+t*t*ey,sc=t<.25?.6+t*2.4:1.2-(t-.25)*.8;
+        frames.push({transform:`translate(${x}px,${y}px) scale(${sc.toFixed(3)})`,opacity:j===0?0:1})}
+      const an=el.animate(frames,{duration:780+Math.random()*220,delay:i*60,easing:'cubic-bezier(.45,.05,.55,.95)',fill:'both'});
+      an.onfinish=()=>{el.remove();shown=Math.min(save.coins,shown+share);$('walletVal').textContent=shown;bumpWallet();blipSafe(1200+landed*40,1800+landed*40);
+        if(++landed===k){pendingFly=0;showCoins();setTimeout(done,180)}};
+    }
+  });
+}
+
+/* ---------------- GAME STATE ---------------- */
+let state='menu',map=genLevel(0,0),custom=null,objs=[],pa=0,cam=0,tilt=0,dist=0,prevDist=0,basses=0,lives=3,maxLives=3,inv=0,shield=0,
+  magnetT=0,boost=false,boostEnd=0,parts=[],conf=[],waves=[],shake=0,flash=0,hitPulse=0,clock=0,demoDist=0,curSi=0,curDi=1;
+function hearts(){$('lives').textContent='♥'.repeat(Math.max(0,lives))+'♡'.repeat(Math.max(0,maxLives-lives))}
+
+/* ---------------- SCREENS ---------------- */
+const SCR=['scrMain','scrLib','scrShop','scrAdd','scrInstall','card'];
+function screen(id){SCR.forEach(s=>$(s).hidden=s!==id);$('overlay').hidden=false;$('wallet').hidden=state==='paused'||id==='scrInstall';$('hud').hidden=state!=='play'&&state!=='paused';showCoins();$('overlay').scrollTop=0}
+function setBtns(list){const box=$('btns');box.innerHTML='';list.forEach(([t,fn,ghost])=>{const b=document.createElement('button');b.type='button';b.className='btn'+(ghost?' ghost':'');b.textContent=t;b.onclick=fn;box.appendChild(b)})}
+let collecting=false;
+function showMenu(title,text,btns,opts={}){
+  $('ovTitle').textContent=title;$('ovText').textContent=text;$('spin').hidden=!opts.spin;
+  $('reward').hidden=opts.reward==null;if(opts.reward!=null)$('rewardVal').textContent=`+${opts.reward}`;
+  if(opts.reward!=null)btns=btns.map(([t,fn,gh])=>[t,async()=>{if(collecting)return;collecting=true;$('btns').querySelectorAll('button').forEach(b=>b.disabled=true);try{await flyCoins()}finally{collecting=false}fn()},gh]);
+  $('card').className='card'+(opts.win?' win':'');setBtns(btns);screen('card');
+  setTimeout(()=>{const b=$('btns').querySelector('button');if(b)b.focus({preventScroll:true})},50);
+}
+function goHome(){if(state!=='menu'){state='menu';endBoost();stopMusic()}$('hud').hidden=true;map=genLevel(0,0);screen('scrMain')}
+document.querySelectorAll('[data-home]').forEach(b=>b.onclick=goHome);
+$('goLib').onclick=()=>{renderLib();screen('scrLib')};
+$('goShop').onclick=()=>{renderShop();screen('scrShop')};
+$('goOwn').onclick=()=>pickFile();
+$('libCount').textContent=`${SONGS.length} мелодий · 3 сложности`;
+
+/* library */
+let dbCap=null,assetsCap=null,userCap=null,myId=null,isOwnerV=false,utracks=[],sharedState='loading';
+const esc=v=>String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const CATS=['Все','От игроков','Классика','Русские','Народные мира','Детские','Колыбельные','Праздничные'];
+const lib={q:'',cat:'Все',inst:'',author:''};
+let libOrder=[];
+(function initLib(){
+  $('libCats').innerHTML=CATS.map(c=>`<button type="button" class="fchip${c==='Все'?' on':''}" data-cat="${c}">${c}</button>`).join('');
+  $('libCats').onclick=e=>{const b=e.target.closest('[data-cat]');if(!b)return;lib.cat=b.dataset.cat;[...$('libCats').children].forEach(x=>x.classList.toggle('on',x===b));renderLib()};
+  const insts=[...new Set(SONGS.map(s=>s.inst))];
+  $('libInst').innerHTML='<option value="">Все инструменты</option>'+insts.map(i=>`<option value="${i}">${INST[i]}</option>`).join('');
+  fillAuthors();
+  $('libInst').onchange=e=>{lib.inst=e.target.value;renderLib()};
+  $('libAuthor').onchange=e=>{lib.author=e.target.value;renderLib()};
+  $('libSearch').oninput=e=>{lib.q=e.target.value.trim().toLowerCase();renderLib()};
+  $('libDiff').innerHTML=DIFF.map((d,i)=>`<button type="button" data-d="${i}">${d.name}</button>`).join('');
+  $('libDiff').onclick=e=>{const b=e.target.closest('[data-d]');if(!b)return;save.diff=+b.dataset.d;persist();renderLib()};
+  $('libList').onclick=e=>{const b=e.target.closest('[data-play]');if(b)return start({si:+b.dataset.play,di:save.diff});
+    const u=e.target.closest('[data-utrack]');if(u){const t=utracks.find(x=>x.id===u.dataset.utrack);if(t)playUserTrack(t);return}
+    const d=e.target.closest('[data-del]');if(d){if(d.dataset.armed){deleteTrack(d.dataset.del)}else{d.dataset.armed=1;d.textContent='Точно удалить?'}}};
+})();
+function fillAuthors(){const cur=lib.author,authors=[...new Set([...SONGS.map(s=>s.by),...utracks.map(t=>t.author).filter(Boolean)])].sort((a,b)=>a.localeCompare(b,'ru'));
+  $('libAuthor').innerHTML='<option value="">Все авторы</option>'+authors.map(a=>`<option${a===cur?' selected':''}>${esc(a)}</option>`).join('');
+  $('catList').innerHTML=[...new Set(['Поп','Рок','Рэп','Электроника','Джаз','Русские',...utracks.map(t=>t.category).filter(Boolean)])].map(c=>`<option value="${esc(c)}">`).join('')}
+function renderLib(){
+  [...$('libDiff').children].forEach((b,i)=>b.classList.toggle('on',i===save.diff));
+  const q=lib.q;
+  libOrder=SONGS.map((s,i)=>i).filter(i=>{const s=SONGS[i];
+    if(lib.cat!=='Все'&&!s.tags.includes(lib.cat))return false;if(lib.inst&&s.inst!==lib.inst)return false;if(lib.author&&s.by!==lib.author)return false;
+    if(q&&!(s.title+' '+s.by+' '+INST[s.inst]+' '+s.tags.join(' ')).toLowerCase().includes(q))return false;return true});
+  const uOrder=lib.inst?[]:utracks.filter(t=>{
+    if(lib.cat!=='Все'&&lib.cat!=='От игроков'&&String(t.category||'').toLowerCase()!==lib.cat.toLowerCase())return false;if(lib.author&&t.author!==lib.author)return false;
+    if(q&&!(t.title+' '+(t.author||'')+' '+(t.category||'')+' от игроков').toLowerCase().includes(q))return false;return true});
+  if(lib.cat==='От игроков')libOrder=[];
+  const uRows=uOrder.map(t=>{const mine=isOwnerV||(myId&&t.uid===myId),dur=t.duration?`${Math.floor(t.duration/60)}:${String(t.duration%60).padStart(2,'0')}`:'';
+    return`<div class="row"><div class="info"><b>${esc(t.title)}</b><span class="sub">${esc(t.author||'Неизвестный автор')}${dur?' · '+dur:''}</span><span class="tags"><span class="tag player">От игроков</span>${t.category?`<span class="tag">${esc(t.category)}</span>`:''}</span></div>
+      <div class="side"><button type="button" class="play" data-utrack="${esc(t.id)}">Играть</button>${mine?`<button type="button" class="del" data-del="${esc(t.id)}">Удалить</button>`:''}</div></div>`}).join('');
+  const playerNote=lib.cat==='От игроков'&&!uOrder.length?`<div class="empty">${sharedNote()}</div>`:'';
+  $('libList').innerHTML=uRows+playerNote+(libOrder.length?libOrder.map(i=>{const s=SONGS[i],st=save.best[i+'-'+save.diff]||0,secs=Math.round(songBars(s)*s.meter*60/s.bpm);
+    return`<div class="row"><div class="info"><b>${s.title}</b><span class="sub">${s.by} · ${INST[s.inst]} · ${secs} с</span><span class="tags">${s.tags.map(t=>`<span class="tag">${t}</span>`).join('')}</span></div>
+      <div class="side"><span class="stars" aria-label="Звёзды: ${st} из 3">${'★'.repeat(st)}${'☆'.repeat(3-st)}</span><button type="button" class="play" data-play="${i}">Играть</button></div></div>`}).join('')
+    :(uRows||playerNote?'':'<div class="empty">Ничего не нашлось. Попробуй другой запрос или сбрось фильтры.</div>'));
+}
+
+/* hangar */
+function renderShop(){
+  $('shopList').innerHTML=UPG.map(u=>{const l=lvU(u.id),mx=l>=u.max,c=cost(u,l);
+    return`<div class="row"><div class="info"><b>${u.name}</b><span class="sub">${u.desc}</span>
+      <span class="sub" style="color:var(--ink)">Сейчас: ${u.fx(l)}${mx?'':` → ${u.fx(l+1)}`}</span><span class="pips">${Array.from({length:u.max},(_,i)=>`<i class="${i<l?'on':''}"></i>`).join('')}</span></div>
+      <div class="side"><button type="button" class="buy" data-buy="${u.id}" ${mx||save.coins<c?'disabled':''}>${mx?'Макс.':`${c} ●`}</button></div></div>`}).join('');
+  $('shopList').onclick=e=>{const b=e.target.closest('[data-buy]');if(!b||b.disabled)return;const u=UPG.find(x=>x.id===b.dataset.buy),c=cost(u,lvU(u.id));
+    if(save.coins<c)return;save.coins-=c;save.up[u.id]=lvU(u.id)+1;persist();blipSafe(500,1000);renderShop();showCoins();bumpWallet()};
+  $('skinList').innerHTML=SKINS.map(s=>{const own=save.skins.includes(s.id);
+    return`<button type="button" class="skin${save.skin===s.id?' on':''}" data-skin="${s.id}"><canvas width="96" height="72"></canvas>${s.name}<small>${save.skin===s.id?'выбран':own?'выбрать':s.price+' ●'}</small></button>`}).join('');
+  [...$('skinList').querySelectorAll('canvas')].forEach((c,i)=>drawShipIcon(c,SKINS[i]));
+  $('skinList').onclick=e=>{const b=e.target.closest('[data-skin]');if(!b)return;const s=SKINS.find(x=>x.id===b.dataset.skin);
+    if(!save.skins.includes(s.id)){if(save.coins<s.price)return;save.coins-=s.price;save.skins.push(s.id);blipSafe(500,1000)}
+    save.skin=s.id;persist();renderShop();showCoins()};
+}
+function blipSafe(a,b){if(A&&A.state==='running')blip(a,b)}
+function drawShipIcon(c,sk){const x=c.getContext('2d'),s=26;x.clearRect(0,0,96,72);x.save();x.translate(48,40);
+  x.fillStyle=sk.body;x.beginPath();x.moveTo(0,-s*.75);x.lineTo(s*1.2,s*.35);x.lineTo(s*.35,s*.2);x.lineTo(0,s*.4);x.lineTo(-s*.35,s*.2);x.lineTo(-s*1.2,s*.35);x.closePath();x.fill();
+  x.fillStyle=sk.cab;x.beginPath();x.moveTo(0,-s*.55);x.lineTo(s*.28,s*.1);x.lineTo(-s*.28,s*.1);x.closePath();x.fill();
+  x.fillStyle=sk.eng;x.beginPath();x.arc(-s*.32,s*.22,s*.12,0,TAU);x.arc(s*.32,s*.22,s*.12,0,TAU);x.fill();x.restore()}
+
+/* own music */
+let pickMode='play';
+const pickAudio=()=>{pickMode='play';initAudio();$('fileAudio').value='';$('fileAudio').click()};
+const pickVideo=()=>{pickMode='play';initAudio();$('fileVideo').value='';$('fileVideo').click()};
+const pickFile=()=>showMenu('Своя музыка',`Выбери песню из файлов телефона или видео из галереи: игра сама найдёт бит и бас и построит трассу. Сложность: ${DIFF[save.diff].name.toLowerCase()} (меняется в медиатеке).`,
+  [['Песня из файлов',pickAudio],['Видео из галереи',pickVideo],['Главная',goHome,true]]);
+const levelsMenu=goHome;
+
+/* MOV/MP4 → AAC: read the container ourselves and re-wrap the audio track as ADTS, which every browser can decode */
+function extractAAC(ab){
+  const dv=new DataView(ab),u8=new Uint8Array(ab);
+  const boxes=(st,en)=>{const out=[];let p=st;while(p+8<=en){let size=dv.getUint32(p),hdr=8;const type=String.fromCharCode(u8[p+4],u8[p+5],u8[p+6],u8[p+7]);
+    if(size===1){size=dv.getUint32(p+8)*4294967296+dv.getUint32(p+12);hdr=16}else if(size===0)size=en-p;if(size<hdr)break;out.push({type,data:p+hdr,end:Math.min(en,p+size)});p+=size}return out};
+  const kid=(b,t)=>b&&boxes(b.data,b.end).find(x=>x.type===t);
+  const moov=boxes(0,ab.byteLength).find(b=>b.type==='moov');if(!moov)throw new Error('nomoov');
+  for(const trak of boxes(moov.data,moov.end).filter(b=>b.type==='trak')){
+    const mdia=kid(trak,'mdia'),hdlr=kid(mdia,'hdlr');if(!hdlr)continue;
+    if(String.fromCharCode(...u8.subarray(hdlr.data+8,hdlr.data+12))!=='soun')continue;
+    const stbl=kid(kid(mdia,'minf'),'stbl'),stsd=kid(stbl,'stsd'),stsz=kid(stbl,'stsz'),stsc=kid(stbl,'stsc'),stco=kid(stbl,'stco')||kid(stbl,'co64');
+    if(!stsd||!stsz||!stsc||!stco)continue;
+    // find the esds descriptor anywhere inside the sample description (QuickTime nests it in a 'wave' atom)
+    let e=-1;for(let p=stsd.data;p<stsd.end-4;p++)if(u8[p]===101&&u8[p+1]===115&&u8[p+2]===100&&u8[p+3]===115){e=p+8;break}
+    if(e<0)throw new Error('notaac');
+    let p=e;const rdLen=()=>{let l=0,b;do{b=u8[p++];l=(l<<7)|(b&127)}while(b&128);return l};
+    let asc=null;
+    while(p<stsd.end){const tag=u8[p++],l=rdLen();if(tag===3){p+=2;const fl=u8[p++];if(fl&128)p+=2;if(fl&64)p+=u8[p]+1;if(fl&32)p+=2}else if(tag===4){p+=13}else if(tag===5){asc=u8.subarray(p,p+l);break}else p+=l}
+    if(!asc)throw new Error('notaac');
+    let obj=asc[0]>>3,sfi=((asc[0]&7)<<1)|(asc[1]>>7);const ch=(asc[1]>>3)&15;
+    if(sfi===15||obj===31)throw new Error('notaac');if(obj===5||obj===29)obj=2;
+    const sizes=[],fixed=dv.getUint32(stsz.data+4),n=dv.getUint32(stsz.data+8);
+    for(let k=0;k<n;k++)sizes.push(fixed||dv.getUint32(stsz.data+12+k*4));
+    const sc=[],nsc=dv.getUint32(stsc.data+4);for(let k=0;k<nsc;k++)sc.push([dv.getUint32(stsc.data+8+k*12),dv.getUint32(stsc.data+12+k*12)]);
+    const is64=stco.type==='co64',nco=dv.getUint32(stco.data+4),offs=[];
+    for(let k=0;k<nco;k++)offs.push(is64?dv.getUint32(stco.data+8+k*8)*4294967296+dv.getUint32(stco.data+12+k*8):dv.getUint32(stco.data+8+k*4));
+    let total=0;for(const z of sizes)total+=z+7;
+    const out=new Uint8Array(total);let o=0,si=0;
+    for(let c=0;c<nco&&si<n;c++){
+      let spc=sc[0][1];for(const[fc,cnt]of sc)if(fc<=c+1)spc=cnt;
+      let off=offs[c];
+      for(let k=0;k<spc&&si<n;k++,si++){const z=sizes[si],L=z+7;if(off+z>ab.byteLength)break;
+        out[o]=0xFF;out[o+1]=0xF1;out[o+2]=((obj-1&3)<<6)|(sfi<<2)|(ch>>2&1);out[o+3]=((ch&3)<<6)|(L>>11&3);out[o+4]=L>>3&255;out[o+5]=((L&7)<<5)|31;out[o+6]=0xFC;
+        out.set(u8.subarray(off,off+z),o+7);o+=L;off+=z}
+    }
+    return out.buffer.slice(0,o);
+  }
+  throw new Error('nosound');
+}
+const decodeWith=(ctx,ab,ms)=>new Promise((res,rej)=>{let done=false;const ok=b=>{if(!done&&b){done=true;res(b)}},no=e=>{if(!done){done=true;rej(e||new Error('decode'))}};
+  try{const p=ctx.decodeAudioData(ab,ok,no);if(p&&p.then)p.then(ok,no)}catch(e){no(e)}setTimeout(()=>no(new Error('timeout')),ms)});
+async function decode(ab){
+  try{return await decodeWith(A,ab.slice(0),20000)}
+  catch(e){
+    if(e&&e.message!=='timeout'&&A.state==='running')throw e;
+    // the shared context may be asleep: decode on a fresh one instead
+    const C=window.AudioContext||window.webkitAudioContext,tmp=new C();
+    try{return await decodeWith(tmp,ab.slice(0),25000)}finally{try{tmp.close()}catch(_){}}
+  }
+}
+/* last resort: play the video silently through the audio graph and record its sound in real time */
+function captureFromVideo(f,say){
+  return new Promise((res,rej)=>{
+    const url=URL.createObjectURL(f),v=document.createElement('video');v.src=url;v.playsInline=true;v.setAttribute('playsinline','');v.preload='auto';
+    v.onerror=()=>rej(new Error('media'));
+    v.onloadedmetadata=async()=>{
+      try{
+        await wake();
+        const node=A.createMediaElementSource(v),sp=A.createScriptProcessor(4096,2,2),z=A.createGain();z.gain.value=0;
+        const chunks=[];sp.onaudioprocess=e=>{const ib=e.inputBuffer,a=ib.getChannelData(0),b=ib.numberOfChannels>1?ib.getChannelData(1):a,m=new Float32Array(a.length);for(let i=0;i<a.length;i++)m[i]=(a[i]+b[i])/2;chunks.push(m)};
+        node.connect(sp);sp.connect(z);z.connect(A.destination);
+        const iv=setInterval(()=>say(`Записываю звук из видео: ${Math.floor(v.currentTime)} из ${Math.floor(v.duration||0)} с`),300);
+        v.onended=()=>{clearInterval(iv);idleAudio();sp.disconnect();node.disconnect();URL.revokeObjectURL(url);
+          let tot=0;for(const c of chunks)tot+=c.length;if(!tot)return rej(new Error('nosound'));
+          const out=A.createBuffer(1,tot,A.sampleRate),d=out.getChannelData(0);let o=0;for(const c of chunks){d.set(c,o);o+=c.length}res(out)};
+        await v.play();
+      }catch(e){rej(e)}
+    };
+  });
+}
+let pendingFile=null;
+async function finishAnalysis(buf,name,isVideo){
+  if(buf.duration<3)throw new Error('short');
+  const say=t=>{$('ovText').textContent=`«${name}»: ${t}`};
+  custom=await Promise.race([analyzeSong(buf,name,say),new Promise((_,rej)=>setTimeout(()=>rej(new Error('slow')),90000))]);
+  const secs=Math.round(buf.duration);
+  showMenu('Трасса готова',`«${name}»: ${secs} с, темп ${custom.bpm} BPM, басов на трассе: ${custom.total}.`,[['Поехали',()=>start(custom)],['Главная',goHome,true]]);
+}
+function fail(e,isVideo){
+  const msg=e&&e.message==='short'?'Звука меньше 3 секунд, из такого трассу не построить.'
+    :e&&e.message==='nosound'?'В этом видео нет звука.'
+    :isVideo?'Не получилось достать звук из этого видео. Попробуй другое видео или песню.'
+    :'Этот файл не читается. Попробуй MP3, M4A, WAV или OGG.';
+  showMenu('Не получилось',msg,[['Выбрать другой',pickFile],['Главная',goHome,true]]);
+}
+async function loadFile(f,isVideo){
+  if(!f)return;
+  const name=f.name.replace(/\.[^.]+$/,'')||'Моя песня';
+  isVideo=isVideo||/\.(mov|mp4|m4v|webm|3gp)$/i.test(f.name)&&!/^audio\//.test(f.type);
+  if(f.size>400*1024*1024){showMenu('Файл слишком большой','Возьми файл меньше 400 МБ, например видео покороче.',[['Выбрать другой',pickFile],['Главная',goHome,true]]);return}
+  showMenu(isVideo?'Достаю звук из видео…':'Слушаю песню…',`«${name}»: открываю файл…`,[],{spin:true});
+  try{
+    initAudio();
+    const ab=await f.arrayBuffer();
+    let buf=null;
+    if(isVideo){try{buf=await decode(extractAAC(ab))}catch(e){if(e&&e.message==='nosound')throw e}}
+    if(!buf){try{buf=await decode(ab.slice(0))}catch(e){}}
+    if(!buf&&!isVideo){try{buf=await decode(extractAAC(ab))}catch(e){}} // some .m4a files decode only this way
+    if(!buf&&isVideo){
+      pendingFile=f;
+      showMenu('Нужна ещё одна попытка',`Быстро достать звук из «${name}» не вышло. Могу записать его, проиграв видео без звука: это займёт столько же времени, сколько длится видео.`,
+        [['Записать звук',async()=>{showMenu('Записываю звук…','Подожди, видео проигрывается в фоне без звука.',[],{spin:true});
+          try{const b=await captureFromVideo(pendingFile,t=>{$('ovText').textContent=t});await finishAnalysis(b,name,true)}catch(e){fail(e,true)}}],['Выбрать другой',pickFile,true]]);
+      return;
+    }
+    if(!buf)throw new Error('decode');
+    await finishAnalysis(buf,name,isVideo);
+  }catch(e){fail(e,isVideo)}
+}
+$('fileAudio').addEventListener('change',()=>{const f=$('fileAudio').files[0],v=!!(f&&/^video\//.test(f.type));pickMode==='add'?setAddFile(f,v):loadFile(f,v)});
+$('fileVideo').addEventListener('change',()=>{const f=$('fileVideo').files[0];pickMode==='add'?setAddFile(f,true):loadFile(f,true)});
+
+/* ---------------- PLAYER TRACKS: shared library (db rows + uploaded audio) ---------------- */
+function sharedNote(){return sharedState==='off'?(document.querySelector('link[rel="manifest"]')?'Треки игроков доступны в версии игры внутри Claude.':'Треки игроков видны тем, кто вошёл в аккаунт Claude.'):sharedState==='error'?'Не получилось загрузить треки игроков. Обнови страницу.':sharedState==='loading'?'Загружаю треки игроков…':'Здесь пока пусто. Добавь первый трек кнопкой «+ Добавить трек».'}
+(async()=>{
+  const use=n=>window.claude&&window.claude.use?window.claude.use(n).catch(()=>null):Promise.resolve(null);
+  [dbCap,assetsCap,userCap]=await Promise.all([use('db'),use('assets'),use('user')]);
+  if(userCap){try{myId=await userCap.id()}catch(e){}try{isOwnerV=await userCap.isOwner()}catch(e){}}
+  $('addOpen').hidden=!(dbCap&&assetsCap);
+  if(!dbCap){sharedState='off';if(!$('scrLib').hidden)renderLib();return}
+  const tm=setTimeout(()=>{if(sharedState==='loading'){sharedState='error';if(!$('scrLib').hidden)renderLib()}},10000);
+  dbCap.collection('tracks').orderBy('created','desc').limit(300).onSnapshot(snap=>{
+    clearTimeout(tm);sharedState='ok';
+    utracks=snap.docs.map(d=>{const v=d.data()||{};return{id:d.id,title:String(v.title||'Без названия').slice(0,80),author:String(v.author||'').slice(0,60),category:String(v.category||'').slice(0,40),asset:String(v.asset||''),duration:+v.duration||0,uid:v.uid||null}}).filter(t=>/^[0-9a-f]{32}$/.test(t.asset));
+    fillAuthors();if(!$('scrLib').hidden)renderLib();
+  },()=>{clearTimeout(tm);sharedState='error';if(!$('scrLib').hidden)renderLib()});
+})();
+const abToB64=ab=>{const u=new Uint8Array(ab);let s='';for(let i=0;i<u.length;i+=0x8000)s+=String.fromCharCode.apply(null,u.subarray(i,i+0x8000));return btoa(s)};
+const b64ToAb=b=>{const s=atob(b.trim()),u=new Uint8Array(s.length);for(let i=0;i<s.length;i++)u[i]=s.charCodeAt(i);return u.buffer};
+// too-big files are re-encoded as mono WAV at a lower sample rate so they fit the upload limit
+function encodeWav(buf,maxBytes){
+  let sr=22050;if(buf.duration*sr*2>maxBytes)sr=16000;if(buf.duration*sr*2>maxBytes)throw new Error('long');
+  const src=buf.sampleRate,chs=buf.numberOfChannels;let mono=new Float32Array(buf.length);
+  for(let c=0;c<chs;c++){const d=buf.getChannelData(c);for(let i=0;i<d.length;i++)mono[i]+=d[i]/chs}
+  mono=chain(mono,src,[['low',sr*.45],['low',sr*.45]]);
+  const n=Math.floor(buf.duration*sr),ab=new ArrayBuffer(44+n*2),dv=new DataView(ab),wr=(o,t)=>{for(let i=0;i<t.length;i++)dv.setUint8(o+i,t.charCodeAt(i))};
+  wr(0,'RIFF');dv.setUint32(4,36+n*2,true);wr(8,'WAVE');wr(12,'fmt ');dv.setUint32(16,16,true);dv.setUint16(20,1,true);dv.setUint16(22,1,true);dv.setUint32(24,sr,true);dv.setUint32(28,sr*2,true);dv.setUint16(32,2,true);dv.setUint16(34,16,true);wr(36,'data');dv.setUint32(40,n*2,true);
+  for(let i=0;i<n;i++){const x=i*src/sr,j=Math.floor(x),f=x-j,v=(mono[j]||0)*(1-f)+(mono[j+1]||0)*f;dv.setInt16(44+i*2,Math.max(-1,Math.min(1,v))*32767,true)}
+  return ab;
+}
+let addFile=null,addIsVideo=false,adding=false;
+function openAdd(){$('addErr').hidden=true;screen('scrAdd')}
+function setAddFile(f,isVideo){if(!f)return;addFile=f;addIsVideo=isVideo||/\.(mov|mp4|m4v|webm|3gp)$/i.test(f.name);$('addFile').textContent=`Выбран файл: ${f.name}`;
+  if(!$('addTitle').value)$('addTitle').value=f.name.replace(/\.[^.]+$/,'').slice(0,80)}
+function addErr(t){$('addErr').textContent=t;$('addErr').hidden=false}
+$('addOpen').onclick=openAdd;
+$('addBack').onclick=()=>{renderLib();screen('scrLib')};
+$('addPickA').onclick=()=>{pickMode='add';initAudio();$('fileAudio').value='';$('fileAudio').click()};
+$('addPickV').onclick=()=>{pickMode='add';initAudio();$('fileVideo').value='';$('fileVideo').click()};
+$('addSubmit').onclick=async()=>{
+  if(adding)return;
+  const title=$('addTitle').value.trim(),author=$('addAuthor').value.trim(),category=$('addCat').value.trim();
+  if(!addFile)return addErr('Сначала выбери песню или видео.');
+  if(!title)return addErr('Впиши название трека.');
+  if(!category)return addErr('Впиши категорию, например «Поп» или «Рок».');
+  if(!$('addRights').checked)return addErr('Отметь, что у тебя есть право делиться этим треком.');
+  if(!dbCap||!assetsCap)return addErr('Добавлять треки могут только те, кому владелец игры дал доступ на изменение.');
+  adding=true;$('addErr').hidden=true;const btn=$('addSubmit');btn.disabled=true;
+  try{
+    btn.textContent='Читаю файл…';const ab=await addFile.arrayBuffer();
+    let buf=null,bytes=null;
+    if(addIsVideo){try{const a=extractAAC(ab);buf=await decode(a.slice(0));bytes=a}catch(e){}}
+    if(!buf){try{buf=await decode(ab.slice(0));bytes=ab}catch(e){}}
+    if(!buf)throw new Error('decode');
+    if(buf.duration<3)throw new Error('short');
+    const LIM=14.5e6;if(bytes.byteLength>LIM){btn.textContent='Сжимаю звук…';await tick();bytes=encodeWav(buf,LIM)}
+    btn.textContent='Загружаю…';await tick();
+    const up=await assetsCap.upload(new Blob([abToB64(bytes)],{type:'text/plain'}),{type:'text/plain'});
+    await dbCap.collection('tracks').add({title:title.slice(0,80),author:author.slice(0,60),category:category.slice(0,40),asset:up.id,duration:Math.round(buf.duration),uid:myId,created:Date.now()});
+    addFile=null;['addTitle','addAuthor','addCat'].forEach(id=>$(id).value='');$('addRights').checked=false;$('addFile').textContent='Файл не выбран';
+    lib.cat='От игроков';[...$('libCats').children].forEach(x=>x.classList.toggle('on',x.dataset.cat==='От игроков'));
+    showMenu('Трек добавлен',`«${title}» теперь в медиатеке, в разделе «От игроков».`,[['К медиатеке',()=>{renderLib();screen('scrLib')}],['Сыграть сейчас',()=>playUserTrack({title,asset:up.id})]]);
+  }catch(e){
+    const c=e&&(e.code||e.message);
+    addErr(c==='short'?'Звука меньше 3 секунд.':c==='long'?'Трек слишком длинный, подойдёт до 7 минут.':c==='decode'?'Этот файл не читается. Попробуй MP3, M4A, WAV или другое видео.'
+      :c==='too_large'?'Файл слишком большой для загрузки.':c==='not_granted'||c==='permission_denied'?'Нет прав на загрузку: попроси владельца игры дать доступ на изменение.':'Не получилось загрузить трек. Попробуй ещё раз.');
+  }finally{adding=false;btn.disabled=false;btn.textContent='Добавить в медиатеку'}
+};
+const trackCache={};
+let trackJob=0;
+function getText(url,onProg,ms){
+  return new Promise((res,rej)=>{
+    const x=new XMLHttpRequest();let tm=setTimeout(()=>{x.abort();rej(new Error('timeout'))},ms);
+    x.open('GET',url);x.responseType='text';
+    x.onprogress=e=>{onProg(e.loaded,e.lengthComputable?e.total:0);clearTimeout(tm);tm=setTimeout(()=>{x.abort();rej(new Error('timeout'))},ms)}; // a stalled download fails, a slow one keeps going
+    x.onload=()=>{clearTimeout(tm);x.status>=200&&x.status<300?res(x.responseText):rej(new Error(x.status===404?'gone':'http'))};
+    x.onerror=()=>{clearTimeout(tm);rej(new Error('net'))};
+    x.send();
+  });
+}
+async function download(asset,onProg){
+  const url='/_blob/'+asset;
+  try{return await getText(url,onProg,20000)}
+  catch(e){
+    if(e.message==='gone')throw e;
+    const ctl=new AbortController(),tm=setTimeout(()=>ctl.abort(),30000);
+    try{const r=await fetch(url,{signal:ctl.signal,cache:'no-store'});if(!r.ok)throw new Error(r.status===404?'gone':'http');return await r.text()}
+    catch(e2){throw new Error(e2.name==='AbortError'?'timeout':e2.message||'net')}finally{clearTimeout(tm)}
+  }
+}
+async function playUserTrack(t){
+  const job=++trackJob,alive=()=>job===trackJob;
+  wake(); // straight from the tap, so iPhone lets the audio wake up
+  const back=()=>{trackJob++;renderLib();screen('scrLib')};
+  showMenu('Загружаю трек…',`«${t.title}»: скачиваю…`,[['Отмена',back,true]],{spin:true});
+  const say=m=>{if(alive())$('ovText').textContent=`«${t.title}»: ${m}`};
+  let step='download';
+  try{
+    let buf=trackCache[t.asset];
+    if(!buf){
+      const b64=await download(t.asset,(got,tot)=>say(tot?`скачиваю ${Math.round(got/tot*100)}%`:`скачиваю ${(got/1048576).toFixed(1)} МБ`));
+      if(!alive())return;
+      step='decode';say('распаковываю звук…');await tick();
+      let ab;try{ab=b64ToAb(b64)}catch(e){throw new Error('broken')}
+      buf=await decode(ab);if(!alive())return;
+      trackCache[t.asset]=buf;
+    }
+    step='analyze';
+    await finishAnalysis(buf,t.title,false);
+  }catch(e){
+    if(!alive())return;
+    const c=e&&e.message,retry=['Попробовать ещё раз',()=>playUserTrack(t)];
+    const msg=c==='gone'?'Файла этого трека больше нет на сервере: возможно, его удалили.'
+      :c==='http'?'Сервер не отдаёт файл трека. Скорее всего, он виден только участникам организации владельца игры.'
+      :step==='download'?'Файл трека не скачивается: проверь интернет и попробуй ещё раз.'
+      :c==='broken'?'Файл трека повреждён. Его стоит удалить и добавить заново.'
+      :step==='decode'?'Телефон не смог распаковать звук этого трека. Попробуй ещё раз: иногда помогает.'
+      :'Не получилось построить трассу для этого трека.';
+    showMenu('Не получилось открыть трек',msg,[retry,['Медиатека',back,true]]);
+  }
+}
+async function deleteTrack(id){
+  const t=utracks.find(x=>x.id===id);if(!t||!dbCap)return;
+  try{await dbCap.doc('tracks/'+id).delete();if(assetsCap)assetsCap.delete(t.asset).catch(()=>{});delete trackCache[t.asset]}
+  catch(e){showMenu('Не получилось удалить','Удалять трек может тот, кто его добавил, или владелец игры.',[['Медиатека',()=>{renderLib();screen('scrLib')}]])}
+}
+
+
+/* ---------------- PLAY ---------------- */
+// start({si,di}) for a library track, or start(customMap)
+async function start(arg){
+  if(arg&&arg.objs){map=arg;custom=arg}else{curSi=arg?arg.si:curSi;curDi=arg?arg.di:curDi;map=genLevel(curSi,curDi);custom=null}
+  objs=map.objs.map(o=>Object.assign({},o));
+  state='starting';notePlayed();
+  await startMusic(map.song);
+  pa=cam;tilt=0;dist=prevDist=mbAt(A.currentTime-latency())*map.U;basses=0;maxLives=3+lvU('life');lives=maxLives;inv=1;
+  shield=lvU('start')?1+lvU('shd'):0;magnetT=0;boost=false;parts=[];conf=[];waves=[];pops=[];edge=null;
+  $('bass').textContent=0;$('lvLabel').textContent=custom?`Своя музыка · ${DIFF[map.di].name}`:`${DIFF[curDi].name}`;$('song').textContent=`♪ ${map.title}`;hearts();$('chips').innerHTML='';lastChips='';
+  state='play';$('overlay').hidden=true;$('hud').hidden=false;$('wallet').hidden=true;
+}
+const again=()=>custom?start(custom):start({si:curSi,di:curDi});
+async function pause(){
+  if(state!=='play')return;state='paused';drag=null;
+  if(A)try{await A.suspend()}catch(e){}
+  showMenu('Пауза',`♪ ${map.title}`,[['Продолжить',resume],['Заново',again,true],['Главная',goHome,true]]);
+}
+async function resume(){if(state!=='paused')return;$('overlay').hidden=true;if(A)try{await A.resume()}catch(e){}state='play'}
+$('pauseBtn').addEventListener('click',e=>{e.stopPropagation();pause()});
+$('mute').addEventListener('click',e=>{e.stopPropagation();muted=!muted;$('mute').textContent=muted?'Без звука':'Звук';if(A)master.gain.setTargetAtTime(muted?0:.9,A.currentTime,.05)});
+document.addEventListener('visibilitychange',()=>{if(!A)return;if(document.hidden){if(state==='play')pause();else A.suspend()}});
+
+function burst(x,y,col,n,sp){for(let i=0;i<n;i++){const a=Math.random()*TAU,v=sp*(.3+Math.random());parts.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,life:1,col,s:Math.random()*2.5+1})}}
+/* Bend table: lateral offset of the tunnel centre at each depth ahead, in tunnel radii, rebuilt every frame.
+   x(d) = ∫(d-u)·k(w+u)du — zero at the ship, growing ahead, so the tunnel visibly turns and hides what is behind the corner. */
+const BSTEP=.25,BN=100,bendX=new Float32Array(BN+1),bendY=new Float32Array(BN+1),bendS=new Float32Array(BN+1);let bendNow=0,bendDir=0;
+function curvAt(w){if(!map||!map.curves)return null;let kx=0,ky=0;for(const c of map.curves){if(w<c.w0)break;if(w<c.w1){const t=Math.sin(Math.PI*(w-c.w0)/(c.w1-c.w0)),k=c.k*t*t;kx+=Math.cos(c.phi)*k;ky+=Math.sin(c.phi)*k}}return[kx,ky]}
+function buildBend(base){
+  let vx=0,vy=0,px=0,py=0;bendX[0]=bendY[0]=bendS[0]=0;
+  for(let i=1;i<=BN;i++){const c=curvAt(base+(i-.5)*BSTEP)||[0,0];vx+=c[0]*BSTEP;vy+=c[1]*BSTEP;px+=vx*BSTEP;py+=vy*BSTEP;bendX[i]=px;bendY[i]=py;bendS[i]=Math.hypot(px,py)}
+  const c0=curvAt(base+ZP)||[0,0];bendNow=Math.hypot(c0[0],c0[1]);bendDir=Math.atan2(c0[1],c0[0]);
+}
+function bendAt(z){const f=Math.max(0,Math.min(BN-1e-6,(z-ZP*0)/BSTEP)),i=Math.floor(f),t=f-i;return[bendX[i]+(bendX[i+1]-bendX[i])*t,bendY[i]+(bendY[i+1]-bendY[i])*t,bendS[i]+(bendS[i+1]-bendS[i])*t]}
+// how much of an object is hidden behind the bend (1 = fully visible)
+function bendVis(z){const b=bendAt(z)[2];return Math.max(0,Math.min(1,(1.25-b)/.5))}
+function centre(z){const[bx,by]=bendAt(z),rot=-cam+Math.PI/2,c=Math.cos(rot),sn=Math.sin(rot),k=F/z;return[cx+(bx*c-by*sn)*k,cy+(bx*sn+by*c)*k]}
+function proj(a,r,z){const sa=a-cam+Math.PI/2,k=F/z,[ox,oy]=centre(z);return[ox+Math.cos(sa)*r*k,oy+Math.sin(sa)*r*k,k]}
+function endBoost(){if(boost){boost=false;if(A)setRate(1)}}
+let pops=[],edge=null;
+const POWER={magnet:{name:'МАГНИТ',sub:'басы летят к тебе',rgb:'255,84,112',col:'#ff5470'},shield:{name:'ЩИТ',sub:'лишняя попытка',rgb:'143,184,255',col:'#8fb8ff'},rocket:{name:'РАКЕТА',sub:'полный вперёд',rgb:'255,209,102',col:'#ffd166'}};
+function powerUp(kind,x,y){
+  const P=POWER[kind];sfx(kind);
+  pops.push({kind,t:0});edge={rgb:P.rgb,t:0};
+  waves.push({x,y,r:0,life:1,col:P.rgb});waves.push({x,y,r:-120,life:1.3,col:'255,255,255'});
+  burst(x,y,P.col,40,300);burst(x,y,'#ffffff',14,180);shake=Math.max(shake,kind==='rocket'?10:5);
+}
+function drawPops(dt){
+  if(edge){edge.t+=dt;const a=Math.max(0,1-edge.t/.7);if(a<=0)edge=null;else{const gr=g.createRadialGradient(cx,H/2,Math.min(W,H)*.35,cx,H/2,Math.hypot(W,H)*.6);gr.addColorStop(0,`rgba(${edge.rgb},0)`);gr.addColorStop(1,`rgba(${edge.rgb},${.55*a})`);g.fillStyle=gr;g.fillRect(0,0,W,H)}}
+  for(const p of pops){
+    p.t+=dt;const P=POWER[p.kind],t=p.t,life=1.3;if(t>life)continue;
+    const inT=Math.min(1,t/.35),back=1+2.7*Math.pow(inT-1,3)+1.7*Math.pow(inT-1,2),out=t>life-.35?(life-t)/.35:1;
+    const sc=(.4+.6*back)*(t>life-.35?1+(1-out)*.3:1),y0=H*.3-(t>life-.35?(1-out)*40:0);
+    g.save();g.translate(cx,y0);
+    // rays
+    g.globalAlpha=.35*out;g.rotate(t*.8);for(let i=0;i<12;i++){g.rotate(TAU/12);g.fillStyle=`rgba(${P.rgb},.5)`;g.beginPath();g.moveTo(0,0);g.lineTo(-14*sc,-150*sc);g.lineTo(14*sc,-150*sc);g.closePath();g.fill()}
+    g.rotate(-t*.8);g.globalAlpha=out;
+    // icon
+    const isz=34*sc;if(p.kind==='magnet')drawMagnet(0,-46*sc,isz);else if(p.kind==='shield')drawShieldItem(0,-46*sc,isz,clock);else drawRocket(0,-46*sc,isz,clock);
+    // label
+    g.scale(sc,sc);g.textAlign='center';g.textBaseline='middle';
+    g.font='800 38px Unbounded, "Arial Black", system-ui, sans-serif';g.lineWidth=7;g.strokeStyle='rgba(7,6,26,.85)';g.strokeText(P.name,0,18);
+    g.shadowColor=P.col;g.shadowBlur=24;g.fillStyle='#ffffff';g.fillText(P.name,0,18);g.shadowBlur=0;
+    g.font='700 15px Manrope, system-ui, sans-serif';g.fillStyle=P.col;g.fillText(P.sub,0,50);
+    g.restore();
+  }
+  pops=pops.filter(p=>p.t<=1.3);g.globalAlpha=1;
+}
+const coinMul=()=>1+.2*lvU('coin');
+function hit(){
+  lives--;hearts();shake=12;flash=1;inv=1.6+.4*lvU('grace');blip(220,90);
+  const[x,y]=proj(pa,RP,ZP);burst(x,y,'#ff8a5c',24,200);
+  if(lives<=0)lose();
+}
+function lose(){
+  state='over';endBoost();stopMusic();failSound();
+  const[x,y]=proj(pa,RP,ZP);burst(x,y,'#ffffff',30,260);
+  const earned=Math.round(basses*.5*coinMul());addCoins(earned);
+  const btns=[['Ещё раз',again],custom?['Другая музыка',pickFile,true]:['Медиатека',()=>{renderLib();screen('scrLib')},true],['Главная',goHome,true]];
+  setTimeout(()=>showMenu('Крушение',`Пролетел ${Math.max(0,Math.round(dist/map.len*100))}% трассы, поймано басов: ${basses} из ${map.total}. За крушение даётся половина монет за басы, за финиш намного больше.`,btns,{reward:earned}),800);
+}
+const CONF_COL=['#ffd166','#3ee6ff','#ff5470','#b07cff','#7dffb0','#ffffff'];
+function confetti(n,fromTop){for(let i=0;i<n;i++){
+  if(fromTop)conf.push({x:Math.random()*W,y:-20-Math.random()*H*.5,vx:(Math.random()-.5)*80,vy:60+Math.random()*120,rot:Math.random()*TAU,vr:(Math.random()-.5)*12,w:6+Math.random()*6,h:3+Math.random()*4,c:CONF_COL[i%6],life:6});
+  else{const left=i%2===0,a=left?-Math.PI/2+.25+Math.random()*.5:-Math.PI/2-.25-Math.random()*.5,v=500+Math.random()*450;
+    conf.push({x:left?0:W,y:H,vx:Math.cos(a)*v,vy:Math.sin(a)*v,rot:Math.random()*TAU,vr:(Math.random()-.5)*14,w:6+Math.random()*6,h:3+Math.random()*4,c:CONF_COL[i%6],life:6})}}}
+function win(){
+  state='won';endBoost();stopMusic();fanfare();confetti(140,false);confetti(90,true);
+  waves.push({x:cx,y:cy,r:0,life:1,col:'255,209,102'});
+  const pct=map.total?basses/map.total:1,st=pct>=.8?3:pct>=.5?2:1,stars=`${'★'.repeat(st)}${'☆'.repeat(3-st)}`;
+  const finish=Math.round(map.beats/8*DIFF[map.di].mul*st),earned=Math.round((basses+finish)*coinMul());addCoins(earned);
+  let btns;
+  if(custom)btns=[['Ещё раз',again],['Другая музыка',pickFile,true],['Главная',goHome,true]];
+  else{
+    const k=curSi+'-'+curDi;save.best[k]=Math.max(save.best[k]||0,st);persist();
+    const order=libOrder.length?libOrder:SONGS.map((s,i)=>i),pos=order.indexOf(curSi),next=order[(pos+1)%order.length];
+    btns=[['Следующая',()=>start({si:next,di:curDi})],['Ещё раз',again,true],['Главная',goHome,true]];
+  }
+  setTimeout(()=>{confetti(80,true);showMenu(custom?'Песня пройдена!':'Трасса пройдена!',`${stars}  Басов поймано ${basses} из ${map.total}. ${st<3?'Поймай 80% басов, чтобы получить три звезды и больше монет.':'Идеальный ритм!'}`,btns,{win:true,reward:earned})},1400);
+}
+
+/* input */
+let keys={},drag=null;
+cv.addEventListener('pointerdown',e=>{e.preventDefault();if(state!=='play')return;drag={x:e.clientX,id:e.pointerId};cv.setPointerCapture(e.pointerId)});
+cv.addEventListener('pointermove',e=>{if(!drag||e.pointerId!==drag.id||state!=='play')return;const dx=e.clientX-drag.x;drag.x=e.clientX;pa-=dx/Math.min(W,480)*Math.PI*1.8*(1+.12*lvU('turn'))});
+const endDrag=e=>{if(drag&&e.pointerId===drag.id)drag=null};
+cv.addEventListener('pointerup',endDrag);cv.addEventListener('pointercancel',endDrag);
+addEventListener('keydown',e=>{keys[e.code]=true;if(e.code==='Escape'){if(state==='play')pause();else if(state==='paused')resume()}});addEventListener('keyup',e=>{keys[e.code]=false});
+
+let kv=0,lastChips='';
+function update(dt){
+  clock+=dt;
+  for(const p of parts){p.x+=p.vx*dt;p.y+=p.vy*dt;p.vx*=.95;p.vy*=.95;p.life-=dt*1.2}parts=parts.filter(p=>p.life>0);
+  for(const c of conf){c.vy+=420*dt;c.vx*=.985;c.vy=Math.min(c.vy,260);c.x+=c.vx*dt+Math.sin(clock*3+c.rot)*20*dt;c.y+=c.vy*dt;c.rot+=c.vr*dt;c.life-=dt}conf=conf.filter(c=>c.life>0&&c.y<H+30);
+  for(const w of waves){w.r+=dt*900;w.life-=dt*1.6}waves=waves.filter(w=>w.life>0);
+  shake*=.88;flash*=.9;hitPulse*=.9;
+  if(state==='paused'||state==='starting')return;
+  if(state!=='play'){
+    if(state==='menu'){demoDist=(demoDist+3*dt)%Math.max(10,map.len-30);cam+=dt*.25;pa=cam}
+    else{cam+=dt*.12;if(state==='won'&&Math.random()<dt*8)confetti(2,true)}
+    return;
+  }
+  const mb=mbAt(A.currentTime-latency());
+  prevDist=dist;dist=Math.max(dist,mb*map.U);const moved=dist-prevDist;
+  if(boost&&mb>=boostEnd){endBoost();sfx('end')}
+  const kdir=(keys.ArrowLeft||keys.KeyA?1:0)-(keys.ArrowRight||keys.KeyD?1:0);
+  kv+=(kdir*5.5*(1+.12*lvU('turn'))-kv)*Math.min(1,dt*18);const prevPa=pa;pa+=kv*dt;
+  cam+=angDiff(pa,cam)*Math.min(1,dt*11);
+  tilt+=((pa-prevPa)/Math.max(dt,.001)*.05-tilt)*Math.min(1,dt*10);
+  inv=Math.max(0,inv-dt);if(magnetT>0&&magnetT-dt<=0)sfx('end');magnetT=Math.max(0,magnetT-dt);
+  const grab=1+.12*lvU('grab'),magRange=5+lvU('mag');
+  for(const o of objs){
+    if(o.dead)continue;
+    const rz=o.wz-dist+ZP;if(rz>ZFAR+2)break;
+    o.rot=(o.rot||0)+(o.vr||0)*dt;
+    if(o.t==='bass'&&magnetT>0&&rz<ZP+magRange&&rz>ZP-.3)o.a+=angDiff(pa,o.a)*Math.min(1,dt*7);
+    const prev=rz+moved;
+    if(!o.passed&&rz<=ZP+.22&&prev>=ZP-.22){
+      const arc=Math.abs(angDiff(o.a,pa))*RP,[x,y]=proj(o.a,RP,Math.max(.5,rz));
+      if(o.t==='bass'&&arc<(o.s+.17)*grab){o.dead=true;basses++;hitPulse=1;playBass(o);burst(x,y,'#3ee6ff',22,200);waves.push({x,y,r:0,life:1,col:'62,230,255'});$('bass').textContent=basses}
+      else if(o.t==='magnet'&&arc<o.s+.2){o.dead=true;magnetT=20+4*lvU('mag');powerUp('magnet',x,y)}
+      else if(o.t==='shield'&&arc<o.s+.2){o.dead=true;shield=1+lvU('shd');powerUp('shield',x,y)}
+      else if(o.t==='rocket'&&arc<o.s+.2){o.dead=true;if(!boost){boost=true;setRate(BOOST_RATE)}boostEnd=mb+(3+lvU('rkt'))*BOOST_RATE/BEAT;powerUp('rocket',x,y)}
+      else if(o.t==='rock'&&arc<o.s*.75+.05){
+        if(boost){o.dead=true;burst(x,y,'#ff8a5c',20,240);shake=5}
+        else if(inv<=0){
+          o.dead=true;const[sx,sy]=proj(pa,RP,ZP);
+          if(shield>0){shield--;inv=.8;shake=8;sfx('shieldBreak');edge={rgb:'143,184,255',t:.2};burst(sx,sy,'#8fb8ff',36,260);burst(x,y,'#ff8a5c',16,200);waves.push({x:sx,y:sy,r:0,life:1,col:'143,184,255'})}
+          else if(Math.random()<.08*lvU('luck')){inv=.5;blip(700,1400);burst(x,y,'#ff8a5c',16,200);waves.push({x:sx,y:sy,r:0,life:1,col:'255,255,255'})}
+          else{hit();if(state!=='play')return}
+        }
+      }
+    }
+    if(rz<ZP-.22)o.passed=true;
+  }
+  $('prog').style.width=Math.min(100,Math.max(0,dist/map.len*100)).toFixed(1)+'%';
+  const chips=(shield?`<span class="chip shd">Щит${shield>1?' ×'+shield:''}</span>`:'')+(magnetT>0?`<span class="chip mag">Магнит ${Math.ceil(magnetT)} с</span>`:'')+(boost?`<span class="chip rkt">Ракета ${Math.max(0,Math.ceil((boostEnd-mb)*BEAT/rate))} с</span>`:'');
+  if(chips!==lastChips){$('chips').innerHTML=chips;lastChips=chips}
+  if(dist>=map.len)win();
+}
+const BOOST_RATE=1.5;
+
+/* ---------------- RENDER ---------------- */
+function glow(x,y,r,rgb){const gl=g.createRadialGradient(x,y,0,x,y,r);gl.addColorStop(0,`rgba(${rgb},.5)`);gl.addColorStop(1,`rgba(${rgb},0)`);g.fillStyle=gl;g.beginPath();g.arc(x,y,r,0,TAU);g.fill()}
+function drawMagnet(x,y,s){
+  glow(x,y,s*2.4,'255,84,112');
+  g.lineCap='butt';g.lineWidth=s*.45;g.strokeStyle='#ff5470';g.beginPath();g.arc(x,y,s*.7,0,Math.PI);g.moveTo(x-s*.7,y);g.lineTo(x-s*.7,y-s*.6);g.moveTo(x+s*.7,y);g.lineTo(x+s*.7,y-s*.6);g.stroke();
+  g.strokeStyle='#e9e6f5';g.beginPath();g.moveTo(x-s*.7,y-s*.6);g.lineTo(x-s*.7,y-s*.95);g.moveTo(x+s*.7,y-s*.6);g.lineTo(x+s*.7,y-s*.95);g.stroke();
+}
+function drawRocket(x,y,s,t){
+  glow(x,y,s*2.4,'255,209,102');
+  g.save();g.translate(x,y);g.rotate(-.6);
+  g.fillStyle='#ff8a3d';g.beginPath();g.moveTo(-s*.25,s*.55);g.lineTo(0,s*(1+Math.sin(t*30)*.15));g.lineTo(s*.25,s*.55);g.fill();
+  g.fillStyle='#f1eeff';g.beginPath();g.ellipse(0,0,s*.32,s*.7,0,0,TAU);g.fill();
+  g.fillStyle='#ff5470';g.beginPath();g.moveTo(-s*.3,-s*.35);g.quadraticCurveTo(0,-s*1.05,s*.3,-s*.35);g.fill();
+  g.fillStyle='#3ee6ff';g.beginPath();g.arc(0,-s*.05,s*.13,0,TAU);g.fill();
+  g.fillStyle='#ff5470';g.beginPath();g.moveTo(-s*.3,s*.3);g.lineTo(-s*.6,s*.7);g.lineTo(-s*.3,s*.55);g.moveTo(s*.3,s*.3);g.lineTo(s*.6,s*.7);g.lineTo(s*.3,s*.55);g.fill();
+  g.restore();
+}
+function hexPath(x,y,r,rot){g.beginPath();for(let i=0;i<6;i++){const a=rot+i*TAU/6;g.lineTo(x+Math.cos(a)*r,y+Math.sin(a)*r)}g.closePath()}
+function drawShieldItem(x,y,s,t){
+  glow(x,y,s*2.4,'143,184,255');
+  hexPath(x,y,s*.9,t*1.2);g.fillStyle='rgba(143,184,255,.35)';g.fill();g.lineWidth=Math.max(1.5,s*.16);g.strokeStyle='#d3e2ff';g.stroke();
+  hexPath(x,y,s*.45,-t*1.2);g.strokeStyle='#8fb8ff';g.lineWidth=Math.max(1,s*.1);g.stroke();
+}
+function draw(dt){
+  const beat=Math.pow(1-beatPhase(),3),viewDist=state==='menu'?demoDist:dist;
+  const prog=state==='menu'?0:Math.max(0,Math.min(1,dist/map.len));
+  g.setTransform(dpr,0,0,dpr,0,0);
+  g.fillStyle='#07061a';g.fillRect(0,0,W,H);
+  g.save();if(shake>.3)g.translate((Math.random()-.5)*shake,(Math.random()-.5)*shake);
+  buildBend(viewDist-ZP);
+  {const[fx,fy]=centre(ZFAR);g.save();g.translate(cx+(fx-cx)*.12,cy+(fy-cy)*.12);g.rotate(-cam+clock*.01);g.drawImage(bg,-BGS/2,-BGS/2,BGS,BGS);g.restore()}
+  const hue=265-prog*85;
+  const off=(viewDist/.6)%1,base=Math.floor(viewDist/.6);
+  const zs=[];for(let i=0;i<=RINGS;i++)zs.push(.5+(i-off)*.6);
+  for(let i=RINGS-1;i>=0;i--){
+    const z1=zs[i],z2=zs[i+1];if(z1<=.3)continue;const fog=Math.max(0,1-z1/ZFAR);
+    g.fillStyle=`hsla(${hue},60%,22%,${fog*.42})`;
+    for(let s=((i+base)%2+2)%2;s<SECT;s+=2){
+      const a1=s/SECT*TAU,a2=(s+1)/SECT*TAU,p1=proj(a1,RW,z1),p2=proj(a2,RW,z1),p3=proj(a2,RW,z2),p4=proj(a1,RW,z2);
+      g.beginPath();g.moveTo(p1[0],p1[1]);g.lineTo(p2[0],p2[1]);g.lineTo(p3[0],p3[1]);g.lineTo(p4[0],p4[1]);g.closePath();g.fill();
+    }
+  }
+  for(let i=0;i<=RINGS;i++){const z=zs[i];if(z<=.3)continue;const fog=Math.max(0,1-z/ZFAR);
+    g.strokeStyle=`hsla(${hue},85%,${62+beat*18}%,${fog*(.3+beat*.4)})`;g.lineWidth=Math.max(.6,3.6/z);
+    const[ox,oy]=centre(z);g.beginPath();g.arc(ox,oy,RW*F/z,0,TAU);g.stroke()}
+  for(let s=0;s<SECT;s++){const a=s/SECT*TAU,n=proj(a,RW,.5),f=proj(a,RW,ZFAR);
+    const gr=g.createLinearGradient(n[0],n[1],f[0],f[1]);gr.addColorStop(0,`hsla(${hue},85%,65%,.5)`);gr.addColorStop(1,`hsla(${hue},85%,65%,0)`);
+    g.strokeStyle=gr;g.lineWidth=1.3;g.beginPath();g.moveTo(n[0],n[1]);for(let z=1;z<=ZFAR;z+=z<6?.5:1.5){const q=proj(a,RW,z);g.lineTo(q[0],q[1])}g.stroke()}
+  const[vcx,vcy]=centre(ZFAR*.8),vg=g.createRadialGradient(vcx,vcy,0,vcx,vcy,F*.12);vg.addColorStop(0,`hsla(${hue-30},90%,75%,${.45+beat*.25})`);vg.addColorStop(1,'hsla(0,0%,0%,0)');
+  g.fillStyle=vg;g.beginPath();g.arc(vcx,vcy,F*.12,0,TAU);g.fill();
+  if(boost&&state==='play'){g.strokeStyle='rgba(255,230,180,.35)';g.lineWidth=2;for(let i=0;i<36;i++){const a=(i*2.399+clock*.5)%TAU,r1=F*(.25+((clock*3+i*.37)%1)*.9);g.beginPath();g.moveTo(cx+Math.cos(a)*r1,cy+Math.sin(a)*r1);g.lineTo(cx+Math.cos(a)*(r1+F*.18),cy+Math.sin(a)*(r1+F*.18));g.stroke()}}
+  const fz=map.len-viewDist+ZP;
+  if(state!=='menu'&&fz>.35&&fz<ZFAR){const r=RW*F/fz,fog=Math.min(1,(ZFAR-fz)/4)*Math.max(.25,bendVis(fz)),[gx,gy]=centre(fz);
+    g.strokeStyle=`rgba(255,209,102,${fog})`;g.lineWidth=Math.max(2,14/fz);g.shadowColor='#ffd166';g.shadowBlur=20;
+    g.beginPath();g.arc(gx,gy,r*.97,0,TAU);g.stroke();g.shadowBlur=0}
+  const src=state==='menu'?map.objs:objs,list=[];
+  for(const o of src){if(o.dead)continue;const rz=o.wz-viewDist+ZP;if(rz>ZFAR)break;if(rz>.35)list.push([rz,o])}
+  list.reverse();
+  let shipDrawn=false;
+  for(const[rz,o]of list){
+    if(!shipDrawn&&rz<ZP){drawShip(beat);shipDrawn=true}
+    const fog=Math.min(1,Math.max(0,(ZFAR-rz)/5))*bendVis(rz),[x,y,k]=proj(o.a,RP,rz),sz=o.s*k;
+    if(fog<=.01)continue;g.globalAlpha=fog;
+    if(o.t==='rock'){
+      g.save();g.translate(x,y);g.rotate((o.rot||0)+(state==='menu'?clock*(o.vr||0):0));g.fillStyle='#4a2b2a';g.strokeStyle='#ff8a5c';g.lineWidth=Math.max(1,sz*.08);
+      g.beginPath();o.shape.forEach((m,i)=>{const a=i/o.shape.length*TAU;g.lineTo(Math.cos(a)*sz*m,Math.sin(a)*sz*m)});g.closePath();g.fill();g.stroke();
+      g.fillStyle='rgba(0,0,0,.35)';g.beginPath();g.arc(sz*.25,-sz*.2,sz*.22,0,TAU);g.fill();g.restore();
+    }else if(o.t==='bass'){
+      const pr=sz*(1+beat*.3);glow(x,y,pr*2.6,'62,230,255');
+      g.fillStyle='#bff7ff';g.beginPath();g.arc(x,y,pr,0,TAU);g.fill();
+      g.strokeStyle='#3ee6ff';g.lineWidth=Math.max(1,pr*.18);g.beginPath();g.arc(x,y,pr*1.45,0,TAU);g.stroke();
+    }else if(o.t==='magnet')drawMagnet(x,y,sz*1.3);
+    else if(o.t==='shield')drawShieldItem(x,y,sz*1.3,clock);
+    else drawRocket(x,y,sz*1.3,clock);
+    g.globalAlpha=1;
+  }
+  if(!shipDrawn)drawShip(beat);
+  for(const w of waves){g.strokeStyle=`rgba(${w.col},${w.life*.7})`;g.lineWidth=3*w.life;if(w.r<0)continue;g.beginPath();g.arc(w.x,w.y,w.r*.15+8,0,TAU);g.stroke()}
+  for(const p of parts){g.globalAlpha=Math.max(0,p.life);g.fillStyle=p.col;g.beginPath();g.arc(p.x,p.y,p.s,0,TAU);g.fill()}
+  g.globalAlpha=1;g.restore();
+  if(hitPulse>.02){g.fillStyle=`rgba(62,230,255,${hitPulse*.1})`;g.fillRect(0,0,W,H)}
+  if(flash>.02){g.fillStyle=`rgba(255,138,92,${flash*.3})`;g.fillRect(0,0,W,H)}
+  drawPops(dt||0);
+  for(const c of conf){g.save();g.translate(c.x,c.y);g.rotate(c.rot);g.globalAlpha=Math.min(1,c.life);g.fillStyle=c.c;const hh=c.h*Math.abs(Math.cos(c.rot*1.3))+1;g.fillRect(-c.w/2,-hh/2,c.w,hh);g.restore()}
+  g.globalAlpha=1;
+}
+function drawShip(beat){
+  if(state==='over'||state==='menu')return;
+  if(inv>0&&!boost&&Math.floor(inv*12)%2)return;
+  const sk=skin(),[x,y,k]=proj(pa,RP,ZP),sa=pa-cam+Math.PI/2,s=k*.13;
+  if(magnetT>0){g.strokeStyle=`rgba(255,84,112,${.25+beat*.3})`;g.lineWidth=2;g.beginPath();g.arc(x,y,s*(2.2+beat*.4+lvU('mag')*.15),0,TAU);g.stroke()}
+  if(shield){const r=s*1.75;const gr=g.createRadialGradient(x,y,r*.6,x,y,r);gr.addColorStop(0,'rgba(143,184,255,0)');gr.addColorStop(1,`rgba(143,184,255,${.3+beat*.2+shield*.06})`);
+    g.fillStyle=gr;g.beginPath();g.arc(x,y,r,0,TAU);g.fill();g.strokeStyle=`rgba(211,226,255,${.6+beat*.3})`;g.lineWidth=1.5*shield;g.beginPath();g.arc(x,y,r,0,TAU);g.stroke()}
+  const lean=bendNow*6*Math.sin(bendDir-pa);
+  g.save();g.translate(x,y);g.rotate(sa-Math.PI/2-Math.max(-.6,Math.min(.6,tilt+lean)));
+  const flame=boost?2.2:1.3;
+  const eg=g.createRadialGradient(0,-s*.1,0,0,-s*.1,s*flame);eg.addColorStop(0,`rgba(255,200,120,${.55+beat*.3})`);eg.addColorStop(1,'rgba(255,160,80,0)');
+  g.fillStyle=eg;g.beginPath();g.arc(0,-s*.1,s*flame,0,TAU);g.fill();
+  g.fillStyle=sk.body;g.beginPath();g.moveTo(0,-s*.75);g.lineTo(s*1.2,s*.35);g.lineTo(s*.35,s*.2);g.lineTo(0,s*.4);g.lineTo(-s*.35,s*.2);g.lineTo(-s*1.2,s*.35);g.closePath();g.fill();
+  g.fillStyle=sk.cab;g.beginPath();g.moveTo(0,-s*.55);g.lineTo(s*.28,s*.1);g.lineTo(-s*.28,s*.1);g.closePath();g.fill();
+  g.fillStyle=boost?'#fff4c2':sk.eng;g.beginPath();g.arc(-s*.32,s*.22,s*.12,0,TAU);g.arc(s*.32,s*.22,s*.12,0,TAU);g.fill();
+  g.restore();
+}
+/* ---------------- INSTALL AS A WEB APP ---------------- */
+const UA=navigator.userAgent||'',IS_IOS=/iPhone|iPad|iPod/.test(UA)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1),IS_ANDROID=/Android/i.test(UA);
+const HOSTED=!!document.querySelector('link[rel="manifest"]');
+// launched from the home-screen icon? (iOS: navigator.standalone; Android/desktop: display-mode)
+function isStandalone(){try{return['standalone','fullscreen','minimal-ui','window-controls-overlay'].some(m=>matchMedia(`(display-mode: ${m})`).matches)||navigator.standalone===true}catch(e){return false}}
+const lsGet=k=>{try{return localStorage.getItem(k)}catch(e){return null}},lsSet=(k,v)=>{try{v==null?localStorage.removeItem(k):localStorage.setItem(k,v)}catch(e){}};
+let installed=isStandalone()||(IS_ANDROID&&lsGet('orbita-installed')==='1'),deferredPrompt=null,instOS=IS_ANDROID?'android':'ios',instChecked=!IS_ANDROID||!navigator.getInstalledRelatedApps;
+addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;installed=isStandalone();lsSet('orbita-installed',null);$('instNow').hidden=instOS!=='android';refreshInstallLink()}); // Chrome offers this only when the app is NOT installed
+addEventListener('appinstalled',()=>{installed=true;deferredPrompt=null;lsSet('orbita-installed','1');if(!$('scrInstall').hidden)goHome();refreshInstallLink()});
+try{matchMedia('(display-mode: standalone)').addEventListener('change',()=>{installed=isStandalone()||installed;refreshInstallLink()})}catch(e){}
+if(navigator.getInstalledRelatedApps)navigator.getInstalledRelatedApps().then(a=>{if(a&&a.length){installed=true;lsSet('orbita-installed','1');if(!$('scrInstall').hidden)goHome()}}).catch(()=>{}).finally(()=>{instChecked=true;refreshInstallLink()});
+function refreshInstallLink(){$('goInstall').hidden=installed;$('goRemind').hidden=!(HOSTED&&installed&&!IS_IOS&&'Notification' in window&&'serviceWorker' in navigator)||save.remind===true&&Notification.permission==='granted'}
+
+const ICON_MINI=(x,y,s)=>`<g transform="translate(${x},${y}) scale(${s/60})"><rect width="60" height="60" rx="13" fill="url(#ig)"/><g fill="none" stroke="#b07cff" stroke-opacity=".8"><ellipse cx="30" cy="27" rx="24" ry="24"/><ellipse cx="30" cy="26" rx="15" ry="15"/><ellipse cx="30" cy="25" rx="8" ry="8"/></g><circle cx="30" cy="25" r="4" fill="#3ee6ff"/><path d="M30 38 L42 49 L33 47 L30 50 L27 47 L18 49Z" fill="#f1eeff"/></g>`;
+const DEFS=`<defs><radialGradient id="ig" cx=".5" cy=".42" r=".7"><stop offset="0" stop-color="#3b2a8f"/><stop offset="1" stop-color="#07061a"/></radialGradient>
+  <filter id="sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity=".25"/></filter></defs>`;
+const TAP=(x,y)=>`<g transform="translate(${x},${y})"><circle class="ripple" r="16" fill="#3ee6ff" fill-opacity=".35" stroke="#3ee6ff" stroke-width="2"/>
+  <g class="finger"><path d="M0 0 L0 22 L5.5 17 L9.5 26 L13 24.5 L9 15.8 L16.5 15.8 Z" fill="#fff" stroke="#111" stroke-width="1.6" stroke-linejoin="round" filter="url(#sh)"/></g></g>`;
+const SHOT=(inner)=>`<svg class="shot" viewBox="0 0 300 170" role="img">${DEFS}${inner}</svg>`;
+const page=`<rect width="300" height="170" fill="#ffffff"/><rect x="18" y="16" width="150" height="10" rx="3" fill="#e4e4ea"/><rect x="18" y="34" width="264" height="54" rx="8" fill="#1a1440"/><rect x="18" y="96" width="210" height="8" rx="3" fill="#ececf1"/><rect x="18" y="110" width="180" height="8" rx="3" fill="#ececf1"/>`;
+const GUIDE={
+ ios:[
+  {cap:'Открой игру в Safari и нажми кнопку «Поделиться»: квадрат со стрелкой вверх.',sub:'В новых версиях iOS она спрятана за кнопкой «•••» рядом с адресом.',
+   svg:SHOT(`${page}<rect y="124" width="300" height="46" fill="#f2f2f7"/><rect x="40" y="128" width="220" height="15" rx="7.5" fill="#fff" stroke="#d8d8de"/><text x="150" y="139" font-size="9" fill="#6b6b75" text-anchor="middle" font-family="system-ui">orbita</text>
+     <g stroke="#0a7aff" stroke-width="2" fill="none" stroke-linecap="round"><path d="M40 157 l-5 -4 l5 -4"/><path d="M90 157 l5 -4 l-5 -4" stroke-opacity=".35"/><rect x="143" y="151" width="14" height="13" rx="2"/><path d="M150 158 v-14 m-4 4 l4 -4 l4 4"/><path d="M200 152 h10 v11 h-10z"/><rect x="250" y="150" width="11" height="11" rx="2"/></g>${TAP(150,157)}`)},
+  {cap:'Пролистай меню вниз и выбери «На экран «Домой»».',sub:'',
+   svg:SHOT(`<rect width="300" height="170" fill="#8e8e98"/><rect x="0" y="22" width="300" height="148" rx="14" fill="#f2f2f7"/><rect x="132" y="28" width="36" height="4" rx="2" fill="#c7c7cc"/>
+     <rect x="14" y="42" width="272" height="30" rx="9" fill="#fff"/><text x="28" y="61" font-size="11" fill="#111" font-family="system-ui">Скопировать</text>
+     <rect x="14" y="78" width="272" height="30" rx="9" fill="#fff"/><text x="28" y="97" font-size="11" fill="#111" font-family="system-ui">Добавить в Избранное</text>
+     <rect x="14" y="114" width="272" height="30" rx="9" fill="#fff" stroke="#3ee6ff" stroke-width="2.5"/><text x="28" y="133" font-size="11" fill="#111" font-family="system-ui" font-weight="600">На экран «Домой»</text>
+     <g fill="none" stroke="#111" stroke-width="1.6"><rect x="256" y="121" width="16" height="16" rx="4"/><path d="M264 125 v8 m-4 -4 h8"/></g>${TAP(220,129)}`)},
+  {cap:'Если есть переключатель «Открывать как веб-приложение», включи его. Затем нажми «Добавить».',sub:'',
+   svg:SHOT(`<rect width="300" height="170" fill="#f2f2f7"/><text x="18" y="26" font-size="11" fill="#0a7aff" font-family="system-ui">Отменить</text><text x="150" y="26" font-size="11" fill="#111" font-weight="600" text-anchor="middle" font-family="system-ui">На экран «Домой»</text><text x="282" y="26" font-size="11" fill="#0a7aff" font-weight="700" text-anchor="end" font-family="system-ui">Добавить</text>
+     <rect x="14" y="42" width="272" height="58" rx="10" fill="#fff"/>${ICON_MINI(24,49,44)}<text x="80" y="68" font-size="12" fill="#111" font-family="system-ui">Орбита</text><text x="80" y="84" font-size="9" fill="#8e8e93" font-family="system-ui">orbita</text>
+     <rect x="14" y="108" width="272" height="30" rx="10" fill="#fff"/><text x="26" y="127" font-size="10.5" fill="#111" font-family="system-ui">Открывать как веб-приложение</text><rect x="246" y="115" width="30" height="17" rx="8.5" fill="#34c759"/><circle cx="267.5" cy="123.5" r="7" fill="#fff"/>${TAP(258,22)}`)},
+  {cap:'Готово: иконка «Орбиты» появится на главном экране. Запускай игру с неё.',sub:'',
+   svg:SHOT(`<rect width="300" height="170" fill="#2b1f5c"/><rect width="300" height="170" fill="url(#ig)" opacity=".6"/>
+     ${[0,1,2,3,4].map(i=>[0,1].map(j=>i===2&&j===1?'':`<rect x="${28+i*52}" y="${22+j*66}" width="40" height="40" rx="10" fill="#fff" fill-opacity=".18"/>`).join('')).join('')}
+     ${ICON_MINI(132,88,40)}<text x="152" y="142" font-size="9" fill="#fff" text-anchor="middle" font-family="system-ui">Орбита</text><circle cx="152" cy="108" r="27" fill="none" stroke="#3ee6ff" stroke-width="2.5"/>${TAP(160,112)}`)},
+ ],
+ android:[
+  {cap:'Открой игру в Chrome и нажми ⋮ в правом верхнем углу.',sub:'',
+   svg:SHOT(`<rect width="300" height="170" fill="#fff"/><rect width="300" height="34" fill="#f1f3f4"/><rect x="12" y="8" width="246" height="19" rx="9.5" fill="#fff" stroke="#dadce0"/><text x="26" y="21" font-size="9.5" fill="#5f6368" font-family="system-ui">orbita</text>
+     <g fill="#3c4043"><circle cx="277" cy="11" r="2"/><circle cx="277" cy="17.5" r="2"/><circle cx="277" cy="24" r="2"/></g>
+     <rect x="18" y="48" width="150" height="10" rx="3" fill="#e8eaed"/><rect x="18" y="66" width="264" height="54" rx="8" fill="#1a1440"/><rect x="18" y="128" width="210" height="8" rx="3" fill="#f1f3f4"/>${TAP(277,18)}`)},
+  {cap:'Выбери «Установить приложение» или «Добавить на главный экран».',sub:'Если видишь кнопку «Установить сейчас» ниже, можно просто нажать её.',
+   svg:SHOT(`<rect width="300" height="170" fill="#fff"/><rect width="300" height="34" fill="#f1f3f4"/><rect x="12" y="8" width="246" height="19" rx="9.5" fill="#fff" stroke="#dadce0"/>
+     <rect x="118" y="20" width="176" height="146" rx="8" fill="#fff" filter="url(#sh)"/>
+     <text x="134" y="44" font-size="10.5" fill="#202124" font-family="system-ui">Новая вкладка</text><text x="134" y="70" font-size="10.5" fill="#202124" font-family="system-ui">История</text><text x="134" y="96" font-size="10.5" fill="#202124" font-family="system-ui">Скачанные файлы</text>
+     <rect x="122" y="108" width="168" height="26" rx="6" fill="#e8f7fb" stroke="#3ee6ff" stroke-width="2"/><text x="134" y="125" font-size="10.5" fill="#202124" font-weight="600" font-family="system-ui">Установить приложение</text>
+     <text x="134" y="154" font-size="10.5" fill="#202124" font-family="system-ui">Настройки</text>${TAP(268,121)}`)},
+  {cap:'Подтверди, нажав «Установить».',sub:'',
+   svg:SHOT(`<rect width="300" height="170" fill="#5f6368"/><rect x="34" y="28" width="232" height="118" rx="16" fill="#fff"/><text x="54" y="54" font-size="12" fill="#202124" font-weight="600" font-family="system-ui">Установить приложение?</text>
+     ${ICON_MINI(54,66,34)}<text x="98" y="82" font-size="11" fill="#202124" font-family="system-ui">Орбита</text><text x="98" y="96" font-size="9" fill="#5f6368" font-family="system-ui">orbita</text>
+     <text x="168" y="132" font-size="10.5" fill="#1a73e8" font-weight="600" font-family="system-ui">Отмена</text><rect x="206" y="118" width="50" height="22" rx="11" fill="#1a73e8"/><text x="231" y="133" font-size="10" fill="#fff" font-weight="600" text-anchor="middle" font-family="system-ui">Установить</text>${TAP(231,129)}`)},
+  {cap:'Готово: иконка «Орбиты» появится на главном экране и в списке приложений.',sub:'',
+   svg:SHOT(`<rect width="300" height="170" fill="#1d2b3a"/><rect width="300" height="170" fill="url(#ig)" opacity=".55"/>
+     ${[0,1,2,3,4].map(i=>[0,1].map(j=>i===2&&j===1?'':`<circle cx="${48+i*52}" cy="${42+j*66}" r="20" fill="#fff" fill-opacity=".18"/>`).join('')).join('')}
+     ${ICON_MINI(132,88,40)}<text x="152" y="142" font-size="9" fill="#fff" text-anchor="middle" font-family="system-ui">Орбита</text><circle cx="152" cy="108" r="27" fill="none" stroke="#3ee6ff" stroke-width="2.5"/>${TAP(160,112)}`)},
+ ]};
+function renderInstall(){
+  [...$('instTabs').children].forEach(b=>b.classList.toggle('on',b.dataset.os===instOS));
+  $('instSteps').innerHTML=GUIDE[instOS].map(s=>`<li><div class="cap"><span>${s.cap}${s.sub?`<small>${s.sub}</small>`:''}</span></div>${s.svg}</li>`).join('');
+  $('instNow').hidden=!(instOS==='android'&&deferredPrompt);
+}
+function showInstall(){renderInstall();screen('scrInstall')}
+$('instTabs').onclick=e=>{const b=e.target.closest('[data-os]');if(!b)return;instOS=b.dataset.os;renderInstall()};
+$('instClose').onclick=$('instOk').onclick=()=>goHome();
+$('instNow').onclick=async()=>{if(!deferredPrompt)return;const p=deferredPrompt;deferredPrompt=null;p.prompt();try{const r=await p.userChoice;if(r&&r.outcome==='accepted'){installed=true;lsSet('orbita-installed','1');goHome()}}catch(e){}renderInstall()};
+$('goInstall').onclick=showInstall;
+
+/* ---------------- REMINDERS (only in the installed app on your own site) ---------------- */
+if(HOSTED&&'serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+function notePlayed(){if(!HOSTED||!('caches' in window))return;caches.open('orbita-state').then(c=>c.put(new URL('__last-play',location.href).href,new Response(String(Date.now())))).catch(()=>{})}
+$('goRemind').onclick=async()=>{
+  let perm='denied';try{perm=await Notification.requestPermission()}catch(e){}
+  if(perm!=='granted'){showMenu('Напоминания выключены','Разреши уведомления для «Орбиты» в настройках телефона, и кнопка заработает.',[['Главная',goHome]]);return}
+  const reg=await navigator.serviceWorker.ready;let periodic=false;
+  try{if('periodicSync' in reg){await reg.periodicSync.register('orbita-remind',{minInterval:12*3600*1000});periodic=true}}catch(e){}
+  try{reg.showNotification('Напоминания включены',{body:'Корабль будет звать тебя в полёт, если долго не заходишь 🚀',icon:'icon-192.png',badge:'badge-96.png',tag:'orbita-hello'})}catch(e){}
+  save.remind=true;persist();refreshInstallLink();
+  showMenu('Напоминания включены',periodic?'Если ты долго не заходишь, корабль напомнит о себе. Как часто проверять, решает сам телефон, обычно раз в день.':'Телефон не поддерживает фоновые напоминания для веб-приложений, поэтому уведомления могут не приходить.',[['Главная',goHome]]);
+};
+
+screen('scrMain');refreshInstallLink();
+// on every launch in a phone browser, show the guide unless the app is installed (Android waits for the installed-apps check)
+if((IS_IOS||IS_ANDROID)&&!installed){const t0=Date.now(),go=()=>{if(installed)return;if(!instChecked&&Date.now()-t0<1500)return setTimeout(go,100);if(state==='menu'&&!$('scrMain').hidden)showInstall()};setTimeout(go,350)}
+let last=performance.now();
+function loop(now){const dt=Math.min((now-last)/1000,.05);last=now;update(dt);draw(dt);requestAnimationFrame(loop)}
+requestAnimationFrame(loop);
+})();
+</script>
+
+</body>
+</html>
